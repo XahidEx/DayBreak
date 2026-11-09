@@ -1,5 +1,5 @@
 import { sql } from "./db";
-import { getEarningsDates, getHeadlines, getQuote, type Quote } from "./market/fmp";
+import { getEarningsDates, getHeadlines, getQuote, type Quote } from "./market";
 import { buildFact, type StockFact } from "./facts";
 import { summarize } from "./summarize";
 

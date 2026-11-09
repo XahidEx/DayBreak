@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { sql } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
-import { getQuote } from "@/lib/market/fmp";
+import { getQuote } from "@/lib/market";
 import { generateBrief } from "@/lib/generate";
 import { renderBrief, sendMail } from "@/lib/mail";
 

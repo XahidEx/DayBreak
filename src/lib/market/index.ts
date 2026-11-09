@@ -1,0 +1,43 @@
+/**
+ * One entry point for market data. FMP is primary; Finnhub covers symbols or endpoints
+ * FMP's free plan refuses (HTTP 402) and provides headlines.
+ */
+import * as fmp from "./fmp";
+import * as fh from "./finnhub";
+
+export type { Headline, Quote } from "./fmp";
+
+export async function getQuote(symbol: string): Promise<fmp.Quote> {
+  try {
+    return await fmp.getQuote(symbol);
+  } catch (e) {
+    if (!fh.finnhubEnabled()) throw e;
+    try {
+      return await fh.getQuote(symbol);
+    } catch (e2) {
+      const a = e instanceof Error ? e.message : String(e);
+      const b = e2 instanceof Error ? e2.message : String(e2);
+      throw new Error(`${a}; Finnhub: ${b}`);
+    }
+  }
+}
+
+export async function getEarningsDates(from: string, to: string): Promise<Map<string, string>> {
+  try {
+    return await fmp.getEarningsDates(from, to);
+  } catch (e) {
+    if (!fh.finnhubEnabled()) throw e;
+    return fh.getEarningsDates(from, to);
+  }
+}
+
+/** Optional: never throws. Finnhub first (FMP news needs a paid plan), then FMP. */
+export async function getHeadlines(symbol: string, limit = 3): Promise<fmp.Headline[]> {
+  if (fh.finnhubEnabled()) {
+    try {
+      const h = await fh.getHeadlines(symbol, limit);
+      if (h.length) return h;
+    } catch {}
+  }
+  return fmp.getHeadlines(symbol, limit);
+}
