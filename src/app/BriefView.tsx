@@ -2,23 +2,38 @@ import Link from "next/link";
 import { fmtPct } from "@/lib/facts";
 import type { BriefBody } from "@/lib/generate";
 
-export function BriefView({ body, alertIds, date }: { body: BriefBody; alertIds?: Record<string, number>; date?: string }) {
+export function BriefView({ body, alertIds }: { body: BriefBody; alertIds?: Record<string, number> }) {
+  const quiet = body.stocks.length === 0;
   return (
     <>
-      {date && <p className="mute">{date}</p>}
-      <p style={{ fontSize: 18 }}>{body.greeting}</p>
+      {quiet && (
+        <div className="card quiet-card">
+          <div className="big">🌤</div>
+          <p>{body.greeting}</p>
+          {body.quietSymbols.length > 0 && <p className="mute">Checked: {body.quietSymbols.join(", ")}</p>}
+        </div>
+      )}
       {body.stocks.map((s) => (
-        <div key={s.symbol} className="card alert">
-          <strong>{s.symbol}</strong>{" "}
-          <span className={s.changePct >= 0 ? "up" : "down"}>{fmtPct(s.changePct)}</span>
-          <p>{s.whatHappened}</p>
-          <p><em>Why it may matter:</em> {s.whyItMayMatter}</p>
-          <p><em>Be careful:</em> {s.caution}</p>
-          <Link className="mute" href={`/paper?symbol=${s.symbol}${alertIds?.[s.symbol] ? `&alert=${alertIds[s.symbol]}` : ""}`}>Note a paper idea →</Link>
+        <div key={s.symbol} className="card stock">
+          <div className="stock-head">
+            <div className="avatar">{s.symbol.slice(0, 4)}</div>
+            <div className="grow"><div className="sym">{s.symbol}</div></div>
+            <span className={`pill ${s.changePct >= 0 ? "up" : "down"}`}>{fmtPct(s.changePct)}</span>
+          </div>
+          <div className="stock-body">
+            <div><div className="label">What happened</div><p>{s.whatHappened}</p></div>
+            <div><div className="label">Why it may matter</div><p>{s.whyItMayMatter}</p></div>
+            <div className="caution"><div className="label">Be careful</div><p>{s.caution}</p></div>
+            <Link className="cta" href={`/paper?symbol=${s.symbol}${alertIds?.[s.symbol] ? `&alert=${alertIds[s.symbol]}` : ""}`}>Note a paper idea →</Link>
+          </div>
         </div>
       ))}
-      {body.stocks.length > 0 && body.quietSymbols.length > 0 && <p className="mute">Quiet: {body.quietSymbols.join(", ")}</p>}
+      {!quiet && body.quietSymbols.length > 0 && <p className="mute">Quiet overnight: {body.quietSymbols.join(", ")}</p>}
       {body.notes.map((n, i) => <p key={i} className="mute">Note: {n}</p>)}
     </>
   );
+}
+
+export function greetingFor(hour: number) {
+  return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 }

@@ -3,6 +3,8 @@ import Link from "next/link";
 import { getUser } from "@/lib/auth";
 import { logout } from "./actions";
 import { DISCLAIMER } from "@/lib/mail";
+import { NavLinks } from "./NavLinks";
+import { Sun } from "./Sun";
 import "./globals.css";
 
 export const metadata: Metadata = { title: "DayBreak", description: "A calm morning note on your watchlist. Information only." };
@@ -13,13 +15,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en">
       <body>
         <header>
-          <Link href="/" className="logo">☀ DayBreak</Link>
+          <Link href="/" className="logo"><Sun /> DayBreak</Link>
           {user && (
             <nav>
-              <Link href="/">Today</Link>
-              <Link href="/briefs">History</Link>
-              <Link href="/paper">Paper ideas</Link>
-              <form action={logout}><button className="link">Log out</button></form>
+              <NavLinks />
+              <form action={logout}><button className="link" style={{ marginLeft: 8 }}>Log out</button></form>
             </nav>
           )}
         </header>

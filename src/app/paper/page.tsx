@@ -39,16 +39,17 @@ export default async function Paper({ searchParams }: { searchParams: Promise<{ 
       </ActionForm>
 
       <h2>Scorecard</h2>
+      <div className="stats">
+        {([["All ideas", idea.all], ["From an alert", idea.fromAlerts], ["My own", idea.own]] as const).map(([n, s]) => (
+          <div key={n} className="stat">
+            <div className="mute">{n}</div>
+            <div className={`n ${s.avgReturn === null ? "" : s.avgReturn >= 0 ? "up" : "down"}`}>{pct(s.avgReturn)}</div>
+            <div className="mute">{s.count} idea{s.count === 1 ? "" : "s"} · {s.winRate === null ? "no win rate yet" : `${s.winRate.toFixed(0)}% winners`}</div>
+          </div>
+        ))}
+      </div>
       <div className="card">
-        <table>
-          <thead><tr><th></th><th>Ideas</th><th>Winners</th><th>Avg return</th></tr></thead>
-          <tbody>
-            {([["All", idea.all], ["Started from an alert", idea.fromAlerts], ["My own", idea.own]] as const).map(([n, s]) => (
-              <tr key={n}><td>{n}</td><td>{s.count}</td><td>{s.winRate === null ? "n/a" : `${s.winRate.toFixed(0)}%`}</td><td>{pct(s.avgReturn)}</td></tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="mute">
+        <p className="mute" style={{ margin: 0 }}>
           Alerts at least 3 days old: {alert.count}. {alert.count ? `The price kept moving the same way after ${alert.continuedPct!.toFixed(0)}% of them (average ${pct(alert.avgFollowThrough)}).` : "Not enough history yet."}
           {" "}Small samples are mostly noise, so give it a few weeks.
         </p>
@@ -60,10 +61,16 @@ export default async function Paper({ searchParams }: { searchParams: Promise<{ 
         const ret = ideaReturn({ direction: r.direction, entry_price: r.entry_price, close_price: r.close_price, current_price: r.current });
         return (
           <div key={r.id} className="card">
-            <strong>{r.symbol}</strong> {r.direction} from ${r.entry_price.toFixed(2)} on {r.opened}
-            {r.alert_id !== null && <span className="mute"> · from an alert</span>}
-            <div>{r.closed_at ? `Closed at $${r.close_price?.toFixed(2)}` : `Now ${r.current ? `$${r.current.toFixed(2)}` : "n/a"}`}: <strong className={ret !== null && ret >= 0 ? "up" : "down"}>{pct(ret)}</strong></div>
-            {r.note && <div className="mute">{r.note}</div>}
+            <div className="stock-head" style={{ padding: 0 }}>
+              <div className="avatar">{r.symbol.slice(0, 4)}</div>
+              <div className="grow">
+                <div className="sym">{r.symbol} <span className="mute">{r.direction}</span></div>
+                <div className="mute">From ${r.entry_price.toFixed(2)} on {r.opened}{r.alert_id !== null ? " · from an alert" : ""}</div>
+              </div>
+              <span className={`pill ${ret === null ? "" : ret >= 0 ? "up" : "down"}`}>{pct(ret)}</span>
+            </div>
+            <div className="mute" style={{ marginTop: 8 }}>{r.closed_at ? `Closed at $${r.close_price?.toFixed(2)}` : `Now ${r.current ? `$${r.current.toFixed(2)}` : "n/a"}`}</div>
+            {r.note && <p>{r.note}</p>}
             <div className="row" style={{ marginTop: 8 }}>
               {!r.closed_at && <form action={closeIdea}><input type="hidden" name="id" value={r.id} /><button className="ghost">Close</button></form>}
               <form action={deleteIdea}><input type="hidden" name="id" value={r.id} /><button className="link">Delete</button></form>
