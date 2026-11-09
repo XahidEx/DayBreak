@@ -41,8 +41,12 @@ export async function addSymbol(_: string | null, form: FormData): Promise<strin
   if (!/^[A-Z][A-Z.\-]{0,9}$/.test(symbol)) return "That does not look like a stock symbol.";
   try {
     await getQuote(symbol);
-  } catch {
-    return `Could not find market data for ${symbol}.`;
+  } catch (e) {
+    console.error("addSymbol quote failed", symbol, e);
+    const msg = e instanceof Error ? e.message : "unknown error";
+    return /No quote data/.test(msg)
+      ? `FMP returned no data for ${symbol}. Check the ticker, or it may not be covered by your FMP plan.`
+      : `Could not check ${symbol}: ${msg}`;
   }
   await sql`INSERT INTO watchlist (user_id, symbol) VALUES (${user.id}, ${symbol}) ON CONFLICT DO NOTHING`;
   revalidatePath("/");
