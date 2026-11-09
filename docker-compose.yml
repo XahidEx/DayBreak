@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
     environment: *app-env
     expose: ["3000"]
-    ports: ["127.0.0.1:${WEB_PORT:-3006}:3000"]   # host-only port, for a Cloudflare tunnel to point at
+    ports: ["127.0.0.1:${WEB_PORT:-3005}:3000"]   # host-only port, for a Cloudflare tunnel to point at
     depends_on:
       db: { condition: service_healthy }
 
