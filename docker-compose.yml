@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: daybreak
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: daybreak
+    volumes: [dbdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U daybreak"]
+      interval: 5s
+      retries: 10
+
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://daybreak:${POSTGRES_PASSWORD}@db:5432/daybreak
+    depends_on:
+      db: { condition: service_healthy }
+    ports: ["127.0.0.1:3000:3000"]   # put Caddy/nginx with HTTPS in front
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://daybreak:${POSTGRES_PASSWORD}@db:5432/daybreak
+    depends_on:
+      web: { condition: service_started }
+
+volumes:
+  dbdata:
