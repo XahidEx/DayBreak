@@ -11,27 +11,43 @@ Rules:
 - Include every stock in the sheet, once each, using its exact ticker symbol.
 Reply with JSON only: {"greeting": string, "stocks": [{"symbol": string, "whatHappened": string, "whyItMayMatter": string, "caution": string}]}`;
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Models are tried in order; overloaded (429/5xx) or retired (404) models fall through to the next. */
+function modelChain(): string[] {
+  const chain = [process.env.GEMINI_MODEL, ...(process.env.GEMINI_FALLBACK_MODELS ?? "gemini-3.5-flash,gemini-flash-latest").split(",")];
+  return [...new Set(chain.map((m) => m?.trim()).filter((m): m is string => !!m))];
+}
+
 async function callGemini(prompt: string): Promise<unknown> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY is not set");
-  const model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-goog-api-key": key },
-    signal: AbortSignal.timeout(60_000),
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM }] },
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: "application/json", temperature: 0.4 },
-    }),
-  });
-  if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
-  const data = (await res.json()) as any;
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (typeof text !== "string") throw new Error("Gemini returned no text");
-  return JSON.parse(text);
+  let lastError = "no model tried";
+  for (const model of modelChain()) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await sleep(2000 * attempt * attempt);
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": key },
+        signal: AbortSignal.timeout(45_000),
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM }] },
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json", temperature: 0.4 },
+        }),
+      }).catch((e) => ({ ok: false, status: 0, json: async () => ({}), error: e }) as any);
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (typeof text !== "string") throw new Error(`Gemini (${model}) returned no text`);
+        return JSON.parse(text);
+      }
+      lastError = `${model} HTTP ${res.status}`;
+      if (res.status === 404 || res.status === 400 || res.status === 401 || res.status === 403) break; // retrying won't help; try next model
+    }
+  }
+  throw new Error(`Gemini unavailable (${lastError})`);
 }
-
 /** Plain, deterministic fallback: used if the AI fails or breaks the rules. */
 export function templateBrief(facts: StockFact[]): BriefOutput {
   return {
