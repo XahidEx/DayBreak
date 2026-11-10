@@ -36,6 +36,7 @@ services:
 
   web:
     build: .
+    image: daybreak-app:latest
     restart: unless-stopped
     environment: *app-env
     expose: ["3000"]
@@ -44,12 +45,13 @@ services:
       db: { condition: service_healthy }
 
   worker:
-    build: .
+    image: daybreak-app:latest   # same image as web, so the app is built only once
     restart: unless-stopped
     command: ["npm", "run", "worker"]
     environment: *app-env
     depends_on:
       db: { condition: service_healthy }
+      web: { condition: service_started }
 
 volumes:
   dbdata:
