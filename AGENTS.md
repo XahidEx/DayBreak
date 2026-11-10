@@ -16,7 +16,7 @@ Roadmap order: history and indicators (done), "why is it down" explainer (done),
 - Secrets are Coolify env vars and build args; never commit `.env`.
 
 ## Stack
-Next.js 15 (App Router) + React 19, TypeScript, Postgres (`postgres` lib), Gemini for text only, FMP + Finnhub (+ Stooq for history). All free plans, so respect rate limits: cache and store data rather than refetching.
+Next.js 15 (App Router) + React 19, TypeScript, Postgres (`postgres` lib), Gemini for text only, FMP + Finnhub (+ Yahoo Finance & Stooq for history). All free plans, so respect rate limits: cache and store data rather than refetching.
 
 ## Rules
 - **Numbers come from code, never from the AI.** The AI only words a fact sheet. `src/lib/guard.ts` rejects invented numbers and advice or prediction wording. If rating labels are added, update the guard deliberately and keep showing the reasons and a not-financial-advice note.

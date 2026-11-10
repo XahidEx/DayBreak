@@ -18,8 +18,6 @@ DayBreak watches your US stock list overnight and sends a short morning note onl
 | :---: | :---: |
 | ![Paper ideas scorecard](docs/screenshots/paper.png) | ![Mobile view](docs/screenshots/mobile.png) |
 
-*(Add your screenshots to [`docs/screenshots/`](docs/screenshots/) as `today.png`, `stock.png`, `paper.png`, and `mobile.png`.)*
-
 ---
 
 ## Key Features
