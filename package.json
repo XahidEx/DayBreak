@@ -15,8 +15,8 @@
     "dev:db": "tsx scripts/dev-db.ts"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Jahidul Islam",
+  "license": "MIT",
   "type": "module",
   "dependencies": {
     "bcryptjs": "^3.0.3",
