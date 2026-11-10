@@ -1,7 +1,9 @@
 node_modules
 .next
 .git
+.github
 .env
 .devdb
 docs
+
 

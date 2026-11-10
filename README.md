@@ -2,7 +2,7 @@
 
 **A calm, self-hosted morning brief and stock analysis tool for US equities.**
 
-DayBreak watches your US stock list overnight and sends a short morning note only when something actually happened—a big daily move, upcoming earnings, or a custom watch price crossed. When a stock moves, it explains *why* by comparing the move against the broader US market (`SPY`), its sector ETF (`XLK`, `XLF`, etc.), trading volume, and real news headlines.
+DayBreak watches your US stock list overnight and sends a short morning note only when something actually happened: a big daily move, upcoming earnings, or a custom watch price crossed. When a stock moves, it explains *why* by comparing the move against the broader US market (`SPY`), its sector ETF (`XLK`, `XLF`, etc.), trading volume, and real news headlines.
 
 > **Information only, not financial advice.** DayBreak is an opinionated personal tool for US stocks. Every number is computed deterministically in code; the AI only words a verified fact sheet.
 
@@ -22,7 +22,7 @@ DayBreak watches your US stock list overnight and sends a short morning note onl
 
 ## Key Features
 
-- **Calm Morning Brief (Web + Email)**: Runs on a schedule after the US market close. If nothing on your watchlist moved beyond your threshold (default `±3%`), has earnings within 7 days, or crossed a custom watch price, it sends a single quiet line—no AI call wasted.
+- **Calm Morning Brief (Web + Email)**: Runs on a schedule after the US market close. If nothing on your watchlist moved beyond your threshold (default `±3%`), has earnings within 7 days, or crossed a custom watch price, it sends a single quiet line with no AI call wasted.
 - **Strict AI Guardrails (`src/lib/guard.ts`)**: Numbers come from code, never from the AI. Gemini receives a plain-text fact sheet and returns JSON. `validateBrief()` rejects any output containing a number not in the fact sheet, any buy/sell/recommendation wording, or any price prediction. If the AI breaks a rule twice, DayBreak falls back to a deterministic template (`src/lib/summarize.ts`).
 - **"Why Did It Move?" Explainer (`src/lib/explain.ts`)**: Compares 1D / 1W / 1M returns against `SPY` and the stock's SPDR Sector ETF (`XLK`, `XLF`, `XLV`, `XLE`, etc.) to classify sessions as **Market-wide**, **Sector-wide**, **Company-specific**, or **Quiet**, paired with 20-day volume ratios and date-matched news headlines.
 - **5-Year Interactive Chart & Technical Indicators (`src/lib/indicators.ts`)**: Pure TypeScript calculations for 20/50/200-day SMAs, Golden/Death crosses, Wilder's RSI(14), MACD(12,26,9), Bollinger Bands, 30-day annualized volatility, and max drawdown.
@@ -98,9 +98,9 @@ docker compose exec web npm run create-user -- you@example.com 'a-password-of-12
 ```
 
 This starts three containers from a single build:
-- `db` — Postgres 16 with persistent volume (`dbdata`)
-- `web` — Next.js 15 server (runs idempotent `npm run migrate` automatically on startup)
-- `worker` — `node-cron` scheduler for the daily brief and history sync
+- `db`: Postgres 16 with persistent volume (`dbdata`)
+- `web`: Next.js 15 server (runs idempotent `npm run migrate` automatically on startup)
+- `worker`: `node-cron` scheduler for the daily brief and history sync
 
 ### Monitoring & Reliability
 - **Failure Alert**: If any step of the morning job fails, `worker` emails `ADMIN_EMAIL` and pings `${HEALTHCHECK_URL}/fail`.
@@ -126,6 +126,10 @@ npm run brief       # trigger the morning brief job immediately
 ```
 
 ---
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for local setup instructions and project guidelines before opening a pull request.
 
 ## Disclaimer
 
