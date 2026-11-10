@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { getUser } from "@/lib/auth";
 import { DISCLAIMER } from "@/lib/mail";
 import { Shell } from "./Shell";
@@ -8,6 +8,7 @@ import "./globals.css";
 const urbanist = Urbanist({ subsets: ["latin"], variable: "--font-urbanist", display: "swap" });
 
 export const metadata: Metadata = { title: "DayBreak", description: "A calm morning note on your watchlist. Information only." };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getUser();

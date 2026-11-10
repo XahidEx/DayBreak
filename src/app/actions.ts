@@ -83,8 +83,24 @@ export async function setTargets(_: string | null, form: FormData): Promise<stri
 
 export async function removeSymbol(form: FormData) {
   const user = await requireUser();
-  await sql`DELETE FROM watchlist WHERE user_id = ${user.id} AND symbol = ${String(form.get("symbol"))}`;
+  const symbol = String(form.get("symbol") ?? "").trim().toUpperCase();
+  await sql`DELETE FROM watchlist WHERE user_id = ${user.id} AND symbol = ${symbol}`;
   revalidatePath("/");
+  revalidatePath(`/stock/${symbol}`);
+}
+
+export async function toggleWatch(form: FormData) {
+  const user = await requireUser();
+  const symbol = String(form.get("symbol") ?? "").trim().toUpperCase();
+  if (!/^[A-Z][A-Z.\-]{0,9}$/.test(symbol)) return;
+  const [exists] = await sql`SELECT 1 FROM watchlist WHERE user_id = ${user.id} AND symbol = ${symbol}`;
+  if (exists) {
+    await sql`DELETE FROM watchlist WHERE user_id = ${user.id} AND symbol = ${symbol}`;
+  } else {
+    await sql`INSERT INTO watchlist (user_id, symbol) VALUES (${user.id}, ${symbol}) ON CONFLICT DO NOTHING`;
+  }
+  revalidatePath("/");
+  revalidatePath(`/stock/${symbol}`);
 }
 
 export async function generateNow(form: FormData) {

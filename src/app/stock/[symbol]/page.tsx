@@ -9,7 +9,7 @@ import { readings, snapshot, type Bar } from "@/lib/indicators";
 import { getHeadlines } from "@/lib/market";
 import { backtest, scoreSnapshot, stability, type Label } from "@/lib/signal";
 import { ActionForm } from "../../ActionForm";
-import { setTargets } from "../../actions";
+import { setTargets, toggleWatch } from "../../actions";
 import { InteractiveChart } from "../../InteractiveChart";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,8 @@ type Range = keyof typeof RANGES;
 
 const pct = (n: number | null) => (n === null ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`);
 const tone = (n: number | null) => (n === null ? "" : n >= 0 ? "up" : "down");
-const labelTone = (l: Label) => (l === "Strong Buy" || l === "Buy" ? "up" : l === "Neutral" ? "" : "down");
+const labelTone = (l: Label) =>
+  l === "Strong Buy" ? "up-strong" : l === "Buy" ? "up" : l === "Neutral" ? "" : l === "Sell" ? "down" : "down-strong";
 const driverLabel: Record<MoveDriver, string> = {
   "company-specific": "Company-specific move",
   "sector-wide": "Sector-wide move",
@@ -97,6 +98,21 @@ export default async function Stock({ params, searchParams }: { params: Promise<
 
   return (
     <>
+      <div className="stock-topbar">
+        <Link href="/" className="mute" style={{ textDecoration: "none", fontWeight: 600 }}>← Today</Link>
+        <div className="row" style={{ marginTop: 0, gap: 8 }}>
+          <form action={toggleWatch}>
+            <input type="hidden" name="symbol" value={symbol} />
+            <button className={watchRow ? "ghost" : ""} style={{ padding: "7px 14px", fontSize: 13.5 }}>
+              {watchRow ? "✓ Watching" : "+ Watch"}
+            </button>
+          </form>
+          <Link href={`/paper?symbol=${symbol}`} className="pill" style={{ textDecoration: "none", fontSize: 13.5, padding: "7px 14px" }}>
+            Note paper idea →
+          </Link>
+        </div>
+      </div>
+
       <h1>
         {symbol}{" "}
         {fund?.name && <span className="mute" style={{ fontSize: 18, fontWeight: 500 }}>· {fund.name}</span>}{" "}
@@ -108,9 +124,9 @@ export default async function Stock({ params, searchParams }: { params: Promise<
         {error ? ` · refresh failed: ${error}` : ""}
       </p>
 
-      <div className="row">
+      <div className="range-tabs">
         {(Object.keys(RANGES) as Range[]).map((r) => (
-          <Link key={r} href={`/stock/${symbol}?range=${r}`} className={r === range ? "pill" : "mute"} style={{ padding: "4px 12px" }}>{r}</Link>
+          <Link key={r} href={`/stock/${symbol}?range=${r}`} className={r === range ? "range-tab on" : "range-tab"}>{r}</Link>
         ))}
       </div>
       <div className="card">
@@ -195,16 +211,36 @@ export default async function Stock({ params, searchParams }: { params: Promise<
       <h2>Signal hint</h2>
       <div className="card">
         <div className="row" style={{ marginTop: 0, justifyContent: "space-between" }}>
-          <span className={`pill ${labelTone(signal.label)}`} style={{ fontSize: 20, padding: "8px 18px" }}>{signal.label}</span>
+          <span className={`pill ${labelTone(signal.label)}`} style={{ fontSize: 19, padding: "7px 16px" }}>{signal.label}</span>
           <span className="mute">score {signal.score > 0 ? "+" : ""}{signal.score} of ±100</span>
         </div>
-        <p className="mute">A hint from the past price pattern, not a prediction and not financial advice. Every factor is below.</p>
-        {signal.factors.map((f) => (
-          <div key={f.name} className="row" style={{ justifyContent: "space-between", flexWrap: "nowrap", margin: "6px 0" }}>
-            <div><b>{f.name}</b><div className="mute">{f.why}</div></div>
-            <span className={`pill ${f.points > 0 ? "up" : f.points < 0 ? "down" : ""}`}>{f.points > 0 ? "+" : ""}{f.points} / {f.max}</span>
+        <div className="gauge" title={`Signal score: ${signal.score} of ±100`}>
+          <div className="gauge__track">
+            <span className="gauge__mid" />
+            <span className="gauge__dot" style={{ left: `${((signal.score + 100) / 200) * 100}%` }} />
           </div>
-        ))}
+          <div className="range__lbl"><span>-100 (Strong Sell)</span><span>0 (Neutral)</span><span>+100 (Strong Buy)</span></div>
+        </div>
+        <p className="mute">A hint from the past price pattern, not a prediction and not financial advice. Every factor is below.</p>
+        {signal.factors.map((f) => {
+          const fillPct = Math.min(100, (Math.abs(f.points) / f.max) * 100);
+          return (
+            <div key={f.name} className="factor-row">
+              <div className="row" style={{ justifyContent: "space-between", flexWrap: "nowrap", margin: 0 }}>
+                <div><b>{f.name}</b><div className="mute">{f.why}</div></div>
+                <span className={`pill ${f.points > 0 ? "up" : f.points < 0 ? "down" : ""}`} style={{ fontSize: 13, padding: "3px 10px" }}>
+                  {f.points > 0 ? "+" : ""}{f.points} / {f.max}
+                </span>
+              </div>
+              <div className="factor-bar">
+                <span
+                  className={f.points > 0 ? "up" : f.points < 0 ? "down" : ""}
+                  style={{ width: `${fillPct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
         {signal.missing.length > 0 && <p className="mute">Not enough history for: {signal.missing.join(", ")}.</p>}
         {bt ? (
           <>

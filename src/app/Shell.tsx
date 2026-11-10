@@ -82,6 +82,14 @@ export function Shell({ user, disclaimer, children }: { user: boolean; disclaime
 
   return (
     <>
+      <header className="mob-top">
+        <Link href="/" className="logo"><Sun /> <b>DayBreak</b></Link>
+        <div className="mob-top__act">
+          <button className="icon-btn" onClick={() => setOpen(true)} aria-label="Search and commands" title="Search"><Ico n="search" /></button>
+          <button className="icon-btn" onClick={cycleTheme} aria-label="Switch theme" title="Switch theme"><Ico n={isDark ? "sunny" : "moon"} /></button>
+          <form action={logout}><button className="icon-btn" aria-label="Log out" title="Log out"><Ico n="out" /></button></form>
+        </div>
+      </header>
       <aside className="side">
         <div className="side__head">
           <Link href="/" className="logo"><Sun /> <b>DayBreak</b></Link>

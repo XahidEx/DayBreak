@@ -14,7 +14,8 @@ import { addSymbol, generateNow, removeSymbol } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-const labelTone = (l: Label) => (l === "Strong Buy" || l === "Buy" ? "up" : l === "Neutral" ? "" : "down");
+const labelTone = (l: Label) =>
+  l === "Strong Buy" ? "up-strong" : l === "Buy" ? "up" : l === "Neutral" ? "" : l === "Sell" ? "down" : "down-strong";
 
 export default async function Today() {
   const user = await requireUser();
@@ -79,14 +80,29 @@ export default async function Today() {
 
       {facts.length > 0 && (
         <>
-          <h2>Your watchlist at a glance</h2>
+          <div className="sec-head">
+            <h2>Your watchlist at a glance</h2>
+            <ActionForm action={addSymbol} className="row" style={{ marginTop: 0 }}>
+              <input name="symbol" placeholder="Add symbol, e.g. AAPL" maxLength={10} required style={{ padding: "8px 13px", fontSize: 14, width: 185 }} />
+              <button style={{ padding: "8px 15px", fontSize: 14 }}>+ Add</button>
+            </ActionForm>
+          </div>
           <div className="tiles">
             {facts.map((f) => {
               const h = hints.get(f.symbol);
               const t = targets.get(f.symbol);
               return (
                 <div key={f.symbol} className="card tile">
-                  <div className="tile__top"><Link href={`/stock/${f.symbol}`} className="sym">{f.symbol}</Link><span className={`pill ${f.changePct >= 0 ? "up" : "down"}`}>{fmtPct(f.changePct)}</span></div>
+                  <div className="tile__top">
+                    <Link href={`/stock/${f.symbol}`} className="sym">{f.symbol}</Link>
+                    <div className="row" style={{ marginTop: 0, gap: 6 }}>
+                      <span className={`pill ${f.changePct >= 0 ? "up" : "down"}`}>{fmtPct(f.changePct)}</span>
+                      <form action={removeSymbol}>
+                        <input type="hidden" name="symbol" value={f.symbol} />
+                        <button className="tile__del" aria-label={`Remove ${f.symbol}`} title={`Remove ${f.symbol}`}>{"\u00d7"}</button>
+                      </form>
+                    </div>
+                  </div>
                   <div className="tile__px">${f.price.toFixed(2)}</div>
                   {(h || (t && (t.low !== null || t.high !== null))) && (
                     <div className="row" style={{ marginTop: 6, gap: 6 }}>
@@ -113,28 +129,39 @@ export default async function Today() {
         </>
       )}
 
-      <h2>Your watchlist</h2>
-      <div className="chips">
-        {list.map((r) => (
-          <form key={r.symbol} action={removeSymbol} className="chip">
-            <input type="hidden" name="symbol" value={r.symbol} />
-            <Link href={`/stock/${r.symbol}`} style={{ color: "inherit", textDecoration: "none" }}>
-              {r.symbol}
-              {(r.target_low !== null || r.target_high !== null) && (
-                <span className="mute" style={{ fontSize: 12, fontWeight: 500, marginLeft: 5 }}>
-                  {[r.target_low !== null ? `≤$${Number(r.target_low).toFixed(0)}` : "", r.target_high !== null ? `≥$${Number(r.target_high).toFixed(0)}` : ""].filter(Boolean).join(" ")}
-                </span>
-              )}
-            </Link>
-            <button aria-label={`Remove ${r.symbol}`}>{"\u00d7"}</button>
-          </form>
-        ))}
-        {list.length === 0 && <span className="mute">Nothing here yet. Add your first stock below.</span>}
-      </div>
-      <ActionForm action={addSymbol} className="row">
-        <input name="symbol" placeholder="Add a symbol, e.g. AAPL" maxLength={10} required />
-        <button>Add</button>
-      </ActionForm>
+      {(() => {
+        const shown = new Set(facts.map((f) => f.symbol));
+        const unbriefed = list.filter((r) => !shown.has(r.symbol as string));
+        if (facts.length > 0 && unbriefed.length === 0) return null;
+        return (
+          <>
+            <h2>{facts.length > 0 ? "Added since your last brief" : "Your watchlist"}</h2>
+            <div className="chips">
+              {(facts.length > 0 ? unbriefed : list).map((r) => (
+                <form key={r.symbol} action={removeSymbol} className="chip">
+                  <input type="hidden" name="symbol" value={r.symbol} />
+                  <Link href={`/stock/${r.symbol}`} style={{ color: "inherit", textDecoration: "none" }}>
+                    {r.symbol}
+                    {(r.target_low !== null || r.target_high !== null) && (
+                      <span className="mute" style={{ fontSize: 12, fontWeight: 500, marginLeft: 5 }}>
+                        {[r.target_low !== null ? `≤$${Number(r.target_low).toFixed(0)}` : "", r.target_high !== null ? `≥$${Number(r.target_high).toFixed(0)}` : ""].filter(Boolean).join(" ")}
+                      </span>
+                    )}
+                  </Link>
+                  <button aria-label={`Remove ${r.symbol}`}>{"\u00d7"}</button>
+                </form>
+              ))}
+              {list.length === 0 && <span className="mute">Nothing here yet. Add your first stock below.</span>}
+            </div>
+            {facts.length === 0 && (
+              <ActionForm action={addSymbol} className="row">
+                <input name="symbol" placeholder="Add a symbol, e.g. AAPL" maxLength={10} required />
+                <button>Add</button>
+              </ActionForm>
+            )}
+          </>
+        );
+      })()}
 
       <h2>Try it now</h2>
       <form action={generateNow} className="row">
