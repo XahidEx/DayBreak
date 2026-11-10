@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { ActionForm } from "./ActionForm";
@@ -62,7 +63,7 @@ export default async function Today() {
           <div className="tiles">
             {facts.map((f) => (
               <div key={f.symbol} className="card tile">
-                <div className="tile__top"><span className="sym">{f.symbol}</span><span className={`pill ${f.changePct >= 0 ? "up" : "down"}`}>{fmtPct(f.changePct)}</span></div>
+                <div className="tile__top"><Link href={`/stock/${f.symbol}`} className="sym">{f.symbol}</Link><span className={`pill ${f.changePct >= 0 ? "up" : "down"}`}>{fmtPct(f.changePct)}</span></div>
                 <div className="tile__px">${f.price.toFixed(2)}</div>
                 <Sparkline values={series.get(f.symbol) ?? []} />
                 <RangeBar price={f.price} low={f.yearLow} high={f.yearHigh} />

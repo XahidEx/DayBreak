@@ -59,3 +59,20 @@ CREATE TABLE IF NOT EXISTS job_runs (
   status      TEXT NOT NULL DEFAULT 'running',  -- running | ok | failed
   detail      TEXT
 );
+
+CREATE TABLE IF NOT EXISTS prices (
+  symbol TEXT NOT NULL,
+  day    DATE NOT NULL,
+  open   DOUBLE PRECISION NOT NULL,
+  high   DOUBLE PRECISION NOT NULL,
+  low    DOUBLE PRECISION NOT NULL,
+  close  DOUBLE PRECISION NOT NULL,
+  volume DOUBLE PRECISION NOT NULL DEFAULT 0,
+  PRIMARY KEY (symbol, day)
+);
+
+CREATE TABLE IF NOT EXISTS price_sync (
+  symbol    TEXT PRIMARY KEY,
+  synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  source    TEXT NOT NULL
+);

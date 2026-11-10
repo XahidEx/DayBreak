@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { sql } from "../src/lib/db";
 import { generateBrief, dateIn } from "../src/lib/generate";
+import { syncHistory } from "../src/lib/history";
 import { renderBrief, sendMail } from "../src/lib/mail";
 
 /** Healthchecks.io-style dead-man's switch: if no success ping arrives on schedule, they email/alert you. */
@@ -19,6 +20,10 @@ export async function runDaily() {
   await ping("/start");
   const problems: string[] = [];
   try {
+    // keep stored price history current for every watched symbol (a failure here must not block the brief)
+    for (const r of await sql`SELECT DISTINCT symbol FROM watchlist`) {
+      try { await syncHistory(r.symbol, 6); } catch (e) { console.error(`history sync failed for ${r.symbol}`, e); }
+    }
     const users = await sql`SELECT id, email, timezone FROM users`;
     for (const u of users) {
       try {

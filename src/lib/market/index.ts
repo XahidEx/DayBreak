@@ -4,6 +4,7 @@
  */
 import * as fmp from "./fmp";
 import * as fh from "./finnhub";
+import * as stooq from "./stooq";
 
 export type { Headline, Quote } from "./fmp";
 
@@ -40,4 +41,21 @@ export async function getHeadlines(symbol: string, limit = 3): Promise<fmp.Headl
     } catch {}
   }
   return fmp.getHeadlines(symbol, limit);
+}
+
+/** Daily bars, oldest first. FMP first, then keyless Stooq. */
+export async function getHistory(symbol: string, from: string): Promise<import("../indicators").Bar[]> {
+  try {
+    const bars = await fmp.getHistory(symbol, from);
+    if (bars.length) return bars;
+    throw new Error(`FMP returned no history for ${symbol}`);
+  } catch (e) {
+    try {
+      return await stooq.getHistory(symbol, from);
+    } catch (e2) {
+      const a = e instanceof Error ? e.message : String(e);
+      const b = e2 instanceof Error ? e2.message : String(e2);
+      throw new Error(`${a}; Stooq: ${b}`);
+    }
+  }
 }

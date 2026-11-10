@@ -34,3 +34,31 @@ export function RangeBar({ price, low, high }: { price: number; low: number; hig
     </div>
   );
 }
+
+/** Full price chart with optional 50/200-day average lines. Server-renderable, no JS needed. */
+export function PriceChart({ days, close, sma50, sma200 }: { days: string[]; close: number[]; sma50: (number | null)[]; sma200: (number | null)[] }) {
+  if (close.length < 2) return <div className="mute">Not enough history yet.</div>;
+  const all = [...close, ...sma50, ...sma200].filter((v): v is number => v !== null && Number.isFinite(v));
+  const min = Math.min(...all), max = Math.max(...all), span = max - min || 1;
+  const W = 800, H = 280, P = 6;
+  const x = (i: number) => (i / (close.length - 1)) * W;
+  const y = (v: number) => H - P - ((v - min) / span) * (H - 2 * P);
+  const path = (s: (number | null)[]) => {
+    let d = "", pen = false;
+    s.forEach((v, i) => { if (v === null) { pen = false; return; } d += `${pen ? "L" : "M"}${x(i).toFixed(1)} ${y(v).toFixed(1)} `; pen = true; });
+    return d;
+  };
+  const up = close[close.length - 1] >= close[0];
+  const line = path(close);
+  return (
+    <div>
+      <svg className={`spark ${up ? "up" : "down"}`} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 280 }} role="img" aria-label="Price history chart">
+        <path d={`${line} L${W} ${H} L0 ${H} Z`} fill={up ? "var(--up)" : "var(--down)"} opacity=".12" />
+        <path d={path(sma200)} fill="none" stroke="var(--mute)" strokeWidth="1.5" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />
+        <path d={path(sma50)} fill="none" stroke="var(--mute)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+        <path d={line} fill="none" stroke={up ? "var(--up)" : "var(--down)"} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div className="range__lbl"><span>{days[0]} · ${close[0].toFixed(2)}</span><span>solid: 50-day avg · dashed: 200-day avg</span><span>{days[days.length - 1]} · ${close[close.length - 1].toFixed(2)}</span></div>
+    </div>
+  );
+}

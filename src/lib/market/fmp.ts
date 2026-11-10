@@ -77,3 +77,12 @@ export async function getHeadlines(symbol: string, limit = 3): Promise<Headline[
     return [];
   }
 }
+
+/** Daily OHLCV bars (oldest first) from `from` (YYYY-MM-DD) to today. */
+export async function getHistory(symbol: string, from: string): Promise<import("../indicators").Bar[]> {
+  const rows = await get<any[]>("/historical-price-eod/full", { symbol, from });
+  return (Array.isArray(rows) ? rows : [])
+    .filter((r) => r?.date && [r.open, r.high, r.low, r.close].every((n: unknown) => typeof n === "number"))
+    .map((r) => ({ day: String(r.date).slice(0, 10), open: r.open, high: r.high, low: r.low, close: r.close, volume: Number(r.volume) || 0 }))
+    .sort((a, b) => a.day.localeCompare(b.day));
+}
