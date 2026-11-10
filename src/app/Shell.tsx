@@ -135,17 +135,26 @@ function Palette({ onClose, go, toggleTheme }: { onClose: () => void; go: (href:
       { id: "theme", label: "Switch light / dark", icon: "moon", run: () => { toggleTheme(); onClose(); } },
     ];
     const add: Cmd[] = looksLikeSymbol
-      ? [{
-          id: "add", label: `Add ${symbol} to watchlist`, hint: "checks the ticker first", icon: "plus",
-          run: async () => {
-            setBusy(true); setMsg(null);
-            const fd = new FormData(); fd.set("symbol", symbol);
-            const err = await addSymbol(null, fd);
-            setBusy(false);
-            if (err) return setMsg({ t: err, bad: true });
-            router.refresh(); onClose();
+      ? [
+          {
+            id: "view",
+            label: `Open ${symbol} analysis →`,
+            hint: "chart, indicators & why it moved",
+            icon: "search",
+            run: () => go(`/stock/${symbol}`),
           },
-        }]
+          {
+            id: "add", label: `Add ${symbol} to watchlist`, hint: "checks the ticker first", icon: "plus",
+            run: async () => {
+              setBusy(true); setMsg(null);
+              const fd = new FormData(); fd.set("symbol", symbol);
+              const err = await addSymbol(null, fd);
+              setBusy(false);
+              if (err) return setMsg({ t: err, bad: true });
+              router.refresh(); onClose();
+            },
+          },
+        ]
       : [];
     const f = q.trim().toLowerCase();
     return [...add, ...base.filter((c) => !f || c.label.toLowerCase().includes(f))];

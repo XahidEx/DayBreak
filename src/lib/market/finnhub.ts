@@ -1,5 +1,5 @@
 /** Finnhub fallback/news source (free tier: 60 calls/min, personal use). */
-import type { Headline, Quote } from "./fmp";
+import type { Fundamentals, Headline, Quote } from "./fmp";
 
 const BASE = "https://finnhub.io/api/v1";
 
@@ -47,10 +47,10 @@ export async function getEarningsDates(from: string, to: string): Promise<Map<st
   return out;
 }
 
-export async function getHeadlines(symbol: string, limit = 3): Promise<Headline[]> {
+export async function getHeadlines(symbol: string, limit = 3, daysBack = 3): Promise<Headline[]> {
   const day = 86_400_000;
   const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
-  const rows = await get<any[]>("/company-news", { symbol, from: iso(Date.now() - 3 * day), to: iso(Date.now()) });
+  const rows = await get<any[]>("/company-news", { symbol, from: iso(Date.now() - daysBack * day), to: iso(Date.now()) });
   const seen = new Set<string>();
   return (rows ?? [])
     .filter((r) => r?.headline && !seen.has(r.headline) && seen.add(r.headline))
@@ -60,5 +60,28 @@ export async function getHeadlines(symbol: string, limit = 3): Promise<Headline[
       title: String(r.headline),
       date: new Date(r.datetime * 1000).toISOString().slice(0, 10),
       publisher: String(r.source ?? "unknown"),
+      ...(typeof r.url === "string" && /^https?:\/\//i.test(r.url) ? { url: r.url } : {}),
     }));
+}
+
+const numOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+export async function getFundamentals(symbol: string): Promise<Fundamentals> {
+  const [p, m] = await Promise.all([
+    get<any>("/stock/profile2", { symbol }).catch(() => null),
+    get<any>("/stock/metric", { symbol, metric: "all" }).catch(() => null),
+  ]);
+  const metric = m?.metric ?? {};
+  if (!p?.ticker && Object.keys(metric).length === 0) throw new Error(`No Finnhub fundamentals for ${symbol}`);
+  const mcapM = numOrNull(p?.marketCapitalization) ?? numOrNull(metric.marketCapitalization);
+  return {
+    symbol: symbol.toUpperCase(),
+    name: typeof p?.name === "string" ? p.name : null,
+    sector: typeof p?.finnhubIndustry === "string" && p.finnhubIndustry.trim() ? p.finnhubIndustry.trim() : null,
+    marketCap: mcapM !== null ? mcapM * 1_000_000 : null,
+    pe: numOrNull(metric.peNormalizedAnnual ?? metric.peTTM ?? metric.peBasicExclExtraTTM),
+    eps: numOrNull(metric.epsNormalizedAnnual ?? metric.epsTTM ?? metric.epsBasicExclExtraItemsTTM),
+    dividendYield: numOrNull(metric.dividendYieldIndicatedAnnual ?? metric.currentDividendYieldTTM),
+    beta: numOrNull(metric.beta),
+  };
 }

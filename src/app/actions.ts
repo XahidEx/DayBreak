@@ -7,6 +7,8 @@ import { z } from "zod";
 import { sql } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { getQuote } from "@/lib/market";
+import { syncHistory } from "@/lib/history";
+import { syncFundamentals } from "@/lib/fundamentals";
 import { generateBrief } from "@/lib/generate";
 import { renderBrief, sendMail } from "@/lib/mail";
 
@@ -49,7 +51,33 @@ export async function addSymbol(_: string | null, form: FormData): Promise<strin
       : `Could not check ${symbol}: ${msg}`;
   }
   await sql`INSERT INTO watchlist (user_id, symbol) VALUES (${user.id}, ${symbol}) ON CONFLICT DO NOTHING`;
+  await Promise.all([syncHistory(symbol).catch(() => null), syncFundamentals(symbol).catch(() => null)]);
   revalidatePath("/");
+  return null;
+}
+
+const optPrice = (v: FormDataEntryValue | null): number | null => {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) && n > 0 ? n : NaN;
+};
+
+export async function setTargets(_: string | null, form: FormData): Promise<string | null> {
+  const user = await requireUser();
+  const symbol = String(form.get("symbol") ?? "").trim().toUpperCase();
+  if (!/^[A-Z][A-Z.\-]{0,9}$/.test(symbol)) return "Invalid symbol.";
+  const low = optPrice(form.get("targetLow"));
+  const high = optPrice(form.get("targetHigh"));
+  if (Number.isNaN(low) || Number.isNaN(high)) return "Watch prices must be positive numbers.";
+  if (low !== null && high !== null && low >= high) return "Low watch price must be below high watch price.";
+  await sql`
+    INSERT INTO watchlist (user_id, symbol, target_low, target_high)
+    VALUES (${user.id}, ${symbol}, ${low}, ${high})
+    ON CONFLICT (user_id, symbol) DO UPDATE SET target_low = EXCLUDED.target_low, target_high = EXCLUDED.target_high
+  `;
+  revalidatePath("/");
+  revalidatePath(`/stock/${symbol}`);
   return null;
 }
 
@@ -61,6 +89,11 @@ export async function removeSymbol(form: FormData) {
 
 export async function generateNow(form: FormData) {
   const user = await requireUser();
+  const watched = await sql`SELECT symbol FROM watchlist WHERE user_id = ${user.id}`;
+  await Promise.all([
+    ...watched.map((r) => syncHistory(r.symbol, 6).catch(() => null)),
+    syncHistory("SPY", 6).catch(() => null),
+  ]);
   const brief = await generateBrief(user.id);
   if (form.get("email") === "on") {
     const m = renderBrief(brief.body, brief.briefDate);

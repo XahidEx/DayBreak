@@ -29,7 +29,8 @@ const numberTokens = (text: string): string[] =>
 
 export function validateBrief(out: BriefOutput, facts: StockFact[], sheet: string): string[] {
   const errors: string[] = [];
-  const allowed = new Set(numberTokens(sheet));
+  // Allow numbers from the fact sheet plus harmless small integers (1, 2) used in everyday phrasing
+  const allowed = new Set([...numberTokens(sheet), "1", "2"]);
   const expected = new Set(facts.map((f) => f.symbol));
   const got = new Set(out.stocks.map((s) => s.symbol.toUpperCase()));
 

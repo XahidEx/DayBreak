@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compareWithMarket, notableDays } from "../src/lib/explain";
+import { fmtMarketCap, sectorEtfFor } from "../src/lib/fundamentals";
 import { buildFact, factSheet } from "../src/lib/facts";
 import { validateBrief } from "../src/lib/guard";
 import { snapshot, type Bar } from "../src/lib/indicators";
@@ -31,11 +32,30 @@ describe("explain", () => {
     expect(cmp.driver).toBe("market-wide");
   });
 
+  it("classifies a drop that matches the sector ETF while SPY is flat as sector-wide", () => {
+    const stock = makeBars([...Array.from({ length: 25 }, () => 100), 96.5]);
+    const spy = makeBars([...Array.from({ length: 25 }, () => 500), 500.5]);
+    const xlk = makeBars([...Array.from({ length: 25 }, () => 200), 193.6]);
+    const cmp = compareWithMarket(snapshot(stock)!, spy, { etf: "XLK", label: "Technology", bars: xlk });
+    expect(cmp.driver).toBe("sector-wide");
+    expect(cmp.sectorEtf).toBe("XLK");
+  });
+
+  it("maps sectors to SPDR ETFs and formats market cap", () => {
+    expect(sectorEtfFor("Technology")).toEqual({ etf: "XLK", label: "Technology" });
+    expect(sectorEtfFor("Semiconductors")).toEqual({ etf: "XLK", label: "Technology" });
+    expect(sectorEtfFor("Financial Services")).toEqual({ etf: "XLF", label: "Financials" });
+    expect(sectorEtfFor(null)).toBeNull();
+    expect(fmtMarketCap(3_250_000_000_000)).toBe("$3.25T");
+    expect(fmtMarketCap(45_600_000_000)).toBe("$45.6B");
+  });
+
   it("finds the biggest single-day moves in the lookback window", () => {
     const bars = makeBars([100, 101, 95, 96, 103, 103]);
-    const big = notableDays(bars, 30, 3);
+    const big = notableDays(bars, 30, 3, [{ title: "Product launch", date: "2025-01-05", publisher: "Reuters", url: "https://example.com/a" }]);
     expect(big.length).toBe(2);
     expect(Math.abs(big[0].changePct)).toBeGreaterThan(5);
+    expect(big.find((d) => d.day === "2025-01-05")?.headline?.title).toBe("Product launch");
   });
 
   it("keeps templateBrief valid against guard when SPY and volume facts are present", () => {

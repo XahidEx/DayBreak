@@ -63,6 +63,10 @@ export function templateBrief(facts: StockFact[]): BriefOutput {
         parts.push(`The US market (SPY) moved ${fmtPct(f.spyChangePct)} (${fmtPct(f.changePct - f.spyChangePct)} vs market).`);
       if (typeof f.volumeRatio === "number")
         parts.push(`Volume was ${f.volumeRatio.toFixed(1)}x its 20-day average.`);
+      if (f.flags.includes("target_low") && typeof f.targetLow === "number")
+        parts.push(`It is at or below your $${fmtPrice(f.targetLow)} low watch level.`);
+      if (f.flags.includes("target_high") && typeof f.targetHigh === "number")
+        parts.push(`It is at or above your $${fmtPrice(f.targetHigh)} high watch level.`);
       if (f.earningsDate) parts.push(`It reports earnings on ${f.earningsDate}.`);
       const h = f.headlines[0];
       return {

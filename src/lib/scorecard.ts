@@ -7,7 +7,7 @@ export type IdeaRow = {
 };
 
 export type AlertRow = {
-  kind: "jump" | "drop" | "earnings_soon";
+  kind: "jump" | "drop" | "earnings_soon" | "target_low" | "target_high";
   price: number;
   current_price: number | null;
   age_days: number;
@@ -41,7 +41,7 @@ export function ideaScorecard(rows: IdeaRow[]) {
  */
 export function alertScorecard(rows: AlertRow[], minAgeDays = 3) {
   const rets = rows
-    .filter((a) => a.kind !== "earnings_soon" && a.age_days >= minAgeDays && a.current_price !== null)
+    .filter((a) => (a.kind === "jump" || a.kind === "drop") && a.age_days >= minAgeDays && a.current_price !== null)
     .map((a) => (a.kind === "jump" ? 1 : -1) * ((a.current_price! - a.price) * 100) / a.price);
   return {
     count: rets.length,

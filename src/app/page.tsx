@@ -21,7 +21,10 @@ export default async function Today() {
   const [brief] = await sql`SELECT id, to_char(brief_date,'FMDay, FMDD FMMonth') AS d, status, headline, body, facts FROM briefs WHERE user_id = ${user.id} ORDER BY brief_date DESC LIMIT 1`;
   const alerts = brief ? await sql`SELECT id, symbol FROM brief_alerts WHERE brief_id = ${brief.id} ORDER BY id DESC` : [];
   const alertIds = Object.fromEntries(alerts.map((a) => [a.symbol, a.id as number]));
-  const list = await sql`SELECT symbol FROM watchlist WHERE user_id = ${user.id} ORDER BY symbol`;
+  const list = await sql`SELECT symbol, target_low, target_high FROM watchlist WHERE user_id = ${user.id} ORDER BY symbol`;
+  const targets = new Map<string, { low: number | null; high: number | null }>(
+    list.map((r) => [r.symbol as string, { low: r.target_low as number | null, high: r.target_high as number | null }]),
+  );
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: user.timezone }).format(new Date()));
   const n = brief?.body?.stocks?.length ?? 0;
   const facts: StockFact[] = brief?.facts ?? [];
@@ -36,6 +39,7 @@ export default async function Today() {
   await Promise.all(
     facts.map(async (f) => {
       const bars = await loadBars(f.symbol);
+      if (bars.length >= 2) series.set(f.symbol, bars.slice(-30).map((b) => b.close));
       const snap = snapshot(bars);
       if (!snap) return;
       const sig = scoreSnapshot(snap);
@@ -79,14 +83,25 @@ export default async function Today() {
           <div className="tiles">
             {facts.map((f) => {
               const h = hints.get(f.symbol);
+              const t = targets.get(f.symbol);
               return (
                 <div key={f.symbol} className="card tile">
                   <div className="tile__top"><Link href={`/stock/${f.symbol}`} className="sym">{f.symbol}</Link><span className={`pill ${f.changePct >= 0 ? "up" : "down"}`}>{fmtPct(f.changePct)}</span></div>
                   <div className="tile__px">${f.price.toFixed(2)}</div>
-                  {h && (
+                  {(h || (t && (t.low !== null || t.high !== null))) && (
                     <div className="row" style={{ marginTop: 6, gap: 6 }}>
-                      <span className={`pill ${labelTone(h.label)}`} style={{ fontSize: 12, padding: "2px 9px" }}>{h.label}</span>
-                      {h.stab && <span className={`pill ${h.stabTone}`} style={{ fontSize: 12, padding: "2px 9px" }}>{h.stab}</span>}
+                      {h && <span className={`pill ${labelTone(h.label)}`} style={{ fontSize: 12, padding: "2px 9px" }}>{h.label}</span>}
+                      {h?.stab && <span className={`pill ${h.stabTone}`} style={{ fontSize: 12, padding: "2px 9px" }}>{h.stab}</span>}
+                      {t && t.low !== null && (
+                        <span className={`pill ${f.price <= t.low ? "up" : ""}`} style={{ fontSize: 12, padding: "2px 9px" }} title="Low watch price">
+                          ≤ ${t.low.toFixed(2)}
+                        </span>
+                      )}
+                      {t && t.high !== null && (
+                        <span className={`pill ${f.price >= t.high ? "down" : ""}`} style={{ fontSize: 12, padding: "2px 9px" }} title="High watch price">
+                          ≥ ${t.high.toFixed(2)}
+                        </span>
+                      )}
                     </div>
                   )}
                   <Sparkline values={series.get(f.symbol) ?? []} />
@@ -103,7 +118,14 @@ export default async function Today() {
         {list.map((r) => (
           <form key={r.symbol} action={removeSymbol} className="chip">
             <input type="hidden" name="symbol" value={r.symbol} />
-            <Link href={`/stock/${r.symbol}`} style={{ color: "inherit", textDecoration: "none" }}>{r.symbol}</Link>
+            <Link href={`/stock/${r.symbol}`} style={{ color: "inherit", textDecoration: "none" }}>
+              {r.symbol}
+              {(r.target_low !== null || r.target_high !== null) && (
+                <span className="mute" style={{ fontSize: 12, fontWeight: 500, marginLeft: 5 }}>
+                  {[r.target_low !== null ? `≤$${Number(r.target_low).toFixed(0)}` : "", r.target_high !== null ? `≥$${Number(r.target_high).toFixed(0)}` : ""].filter(Boolean).join(" ")}
+                </span>
+              )}
+            </Link>
             <button aria-label={`Remove ${r.symbol}`}>{"\u00d7"}</button>
           </form>
         ))}

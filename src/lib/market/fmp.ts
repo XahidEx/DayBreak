@@ -14,7 +14,18 @@ export type Quote = {
   asOf: string;
 };
 
-export type Headline = { title: string; date: string; publisher: string };
+export type Headline = { title: string; date: string; publisher: string; url?: string };
+
+export type Fundamentals = {
+  symbol: string;
+  name: string | null;
+  sector: string | null;
+  marketCap: number | null;
+  pe: number | null;
+  eps: number | null;
+  dividendYield: number | null;
+  beta: number | null;
+};
 
 async function get<T>(path: string, params: Record<string, string>): Promise<T> {
   const key = process.env.FMP_API_KEY;
@@ -72,6 +83,7 @@ export async function getHeadlines(symbol: string, limit = 3): Promise<Headline[
         title: String(r.title),
         date: String(r.publishedDate ?? "").slice(0, 10),
         publisher: String(r.publisher ?? r.site ?? "unknown"),
+        ...(typeof r.url === "string" && /^https?:\/\//i.test(r.url) ? { url: r.url } : {}),
       }));
   } catch {
     return [];
@@ -85,4 +97,30 @@ export async function getHistory(symbol: string, from: string): Promise<import("
     .filter((r) => r?.date && [r.open, r.high, r.low, r.close].every((n: unknown) => typeof n === "number"))
     .map((r) => ({ day: String(r.date).slice(0, 10), open: r.open, high: r.high, low: r.low, close: r.close, volume: Number(r.volume) || 0 }))
     .sort((a, b) => a.day.localeCompare(b.day));
+}
+
+const numOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/** Company profile & valuation fundamentals from FMP. */
+export async function getFundamentals(symbol: string): Promise<Fundamentals> {
+  const [profRows, quoteRows] = await Promise.all([
+    get<any[]>("/profile", { symbol }).catch(() => []),
+    get<any[]>("/quote", { symbol }).catch(() => []),
+  ]);
+  const p = profRows?.[0] ?? {};
+  const q = quoteRows?.[0] ?? {};
+  if (!p.symbol && !q.symbol) throw new Error(`No fundamentals for ${symbol}`);
+  const price = numOrNull(p.price) ?? numOrNull(q.price);
+  const lastDiv = numOrNull(p.lastDividend ?? p.lastDiv);
+  const divYield = lastDiv !== null && price && price > 0 ? (lastDiv / price) * 100 : null;
+  return {
+    symbol: symbol.toUpperCase(),
+    name: typeof (p.companyName ?? q.name) === "string" ? String(p.companyName ?? q.name) : null,
+    sector: typeof p.sector === "string" && p.sector.trim() ? p.sector.trim() : null,
+    marketCap: numOrNull(p.marketCap ?? p.mktCap ?? q.marketCap),
+    pe: numOrNull(q.pe ?? p.pe),
+    eps: numOrNull(q.eps ?? p.eps),
+    dividendYield: divYield,
+    beta: numOrNull(p.beta),
+  };
 }

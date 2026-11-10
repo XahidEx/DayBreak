@@ -17,6 +17,14 @@ describe("facts", () => {
     expect(buildFact(quote(100), "2026-11-25", "2026-11-10", 3).flags).toEqual([]);
     expect(buildFact(quote(100), "2026-11-01", "2026-11-10", 3).flags).toEqual([]);
   });
+  it("flags custom target_low and target_high watch levels and passes guard", () => {
+    const lowFact = buildFact(quote(95, 96), null, "2026-11-10", 3, { low: 98, high: 120 });
+    expect(lowFact.flags).toEqual(["target_low"]);
+    const highFact = buildFact(quote(125, 124), null, "2026-11-10", 3, { low: 98, high: 120 });
+    expect(highFact.flags).toEqual(["target_high"]);
+    const sheet = factSheet([lowFact, highFact]);
+    expect(validateBrief(templateBrief([lowFact, highFact]), [lowFact, highFact], sheet)).toEqual([]);
+  });
   it("always gives a caution", () => {
     expect(buildFact(quote(101), null, "2026-11-10", 3).cautionHint.length).toBeGreaterThan(10);
   });

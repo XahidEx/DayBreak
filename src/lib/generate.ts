@@ -23,7 +23,11 @@ export async function generateBrief(userId: number): Promise<{ id: number; headl
   if (!user) throw new Error(`User ${userId} not found`);
   const today = dateIn(user.timezone);
   const threshold = Number(process.env.MOVE_THRESHOLD_PCT ?? 3);
-  const symbols: string[] = (await sql`SELECT symbol FROM watchlist WHERE user_id = ${userId} ORDER BY symbol`).map((r) => r.symbol);
+  const watchedRows = await sql`SELECT symbol, target_low, target_high FROM watchlist WHERE user_id = ${userId} ORDER BY symbol`;
+  const symbols: string[] = watchedRows.map((r) => r.symbol);
+  const targetsBySymbol = new Map<string, { low: number | null; high: number | null }>(
+    watchedRows.map((r) => [r.symbol, { low: r.target_low, high: r.target_high }]),
+  );
   const notes: string[] = [];
 
   let facts: StockFact[] = [];
@@ -49,7 +53,7 @@ export async function generateBrief(userId: number): Promise<{ id: number; headl
     }
     facts = await Promise.all(
       quotes.map(async (q) => {
-        const f = buildFact(q, earnings.get(q.symbol) ?? null, today, threshold);
+        const f = buildFact(q, earnings.get(q.symbol) ?? null, today, threshold, targetsBySymbol.get(q.symbol));
         f.spyChangePct = spyChangePct;
         const bars = await loadBars(q.symbol).catch(() => []);
         f.volumeRatio = volumeRatio(bars.map((b) => b.volume));
@@ -94,9 +98,17 @@ export async function generateBrief(userId: number): Promise<{ id: number; headl
       RETURNING id`;
     // Replace alerts (only if no paper idea points at the old ones)
     await tx`DELETE FROM brief_alerts WHERE brief_id = ${row.id} AND id NOT IN (SELECT alert_id FROM paper_ideas WHERE alert_id IS NOT NULL)`;
+    const kept = await tx`SELECT id, symbol, kind FROM brief_alerts WHERE brief_id = ${row.id}`;
+    const keptMap = new Map(kept.map((k) => [`${k.symbol}:${k.kind}`, k.id as number]));
     for (const f of flagged)
-      for (const kind of f.flags)
-        await tx`INSERT INTO brief_alerts (brief_id, user_id, symbol, kind, change_pct, price) VALUES (${row.id}, ${userId}, ${f.symbol}, ${kind}, ${f.changePct}, ${f.price})`;
+      for (const kind of f.flags) {
+        const existingId = keptMap.get(`${f.symbol}:${kind}`);
+        if (existingId) {
+          await tx`UPDATE brief_alerts SET change_pct = ${f.changePct}, price = ${f.price} WHERE id = ${existingId}`;
+        } else {
+          await tx`INSERT INTO brief_alerts (brief_id, user_id, symbol, kind, change_pct, price) VALUES (${row.id}, ${userId}, ${f.symbol}, ${kind}, ${f.changePct}, ${f.price})`;
+        }
+      }
     return row.id as number;
   });
 

@@ -1,6 +1,7 @@
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { getQuote } from "@/lib/market/fmp";
+import { getQuote } from "@/lib/market";
+import { loadBars } from "@/lib/history";
 import { alertScorecard, ideaReturn, ideaScorecard } from "@/lib/scorecard";
 import { ActionForm } from "../ActionForm";
 import { addIdea, closeIdea, deleteIdea } from "../actions";
@@ -17,7 +18,16 @@ export default async function Paper({ searchParams }: { searchParams: Promise<{ 
 
   const symbols = [...new Set([...ideas.filter((i) => !i.closed_at).map((i) => i.symbol), ...alerts.filter((a) => Number(a.age) >= 3).map((a) => a.symbol)])];
   const prices = new Map<string, number>();
-  await Promise.all(symbols.map(async (s) => { try { prices.set(s, (await getQuote(s)).price); } catch {} }));
+  await Promise.all(
+    symbols.map(async (s) => {
+      try {
+        prices.set(s, (await getQuote(s)).price);
+      } catch {
+        const bars = await loadBars(s).catch(() => []);
+        if (bars.length > 0) prices.set(s, bars[bars.length - 1].close);
+      }
+    }),
+  );
 
   const rows = (ideas as any[]).map((i) => ({ ...i, current: (prices.get(i.symbol) ?? null) as number | null }));
   const idea = ideaScorecard(rows.map((r) => ({ direction: r.direction, entry_price: r.entry_price, close_price: r.close_price, current_price: r.current, has_alert: r.alert_id !== null })));

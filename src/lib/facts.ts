@@ -1,6 +1,11 @@
 import type { Headline, Quote } from "./market/fmp";
 
-export type Flag = "jump" | "drop" | "earnings_soon";
+export type Flag = "jump" | "drop" | "earnings_soon" | "target_low" | "target_high";
+
+export type TargetLevels = {
+  low?: number | null;
+  high?: number | null;
+};
 
 export type StockFact = {
   symbol: string;
@@ -19,6 +24,8 @@ export type StockFact = {
   cautionHint: string;
   spyChangePct?: number | null;
   volumeRatio?: number | null;
+  targetLow?: number | null;
+  targetHigh?: number | null;
 };
 
 export const EARNINGS_WINDOW_DAYS = 7;
@@ -33,6 +40,10 @@ export function cautionFor(f: Pick<StockFact, "flags" | "daysToEarnings" | "pctB
     return "One big up day is not a trend, and sharp rises sometimes give back part of the gain.";
   if (f.flags.includes("drop"))
     return "A big drop can have causes the data cannot show yet, and prices that fall can keep falling or bounce back, so it is unclear which.";
+  if (f.flags.includes("target_low"))
+    return "Crossing below a target price does not mean a stock has stopped falling; check what changed before acting.";
+  if (f.flags.includes("target_high"))
+    return "Reaching a high target does not mean a rally is over or that it will continue.";
   if (f.pctBelowHigh <= 3)
     return "It is priced close to its 52-week high, so a lot of good news may already be in the price.";
   if (f.pctAboveLow <= 3)
@@ -45,6 +56,7 @@ export function buildFact(
   earningsDate: string | null,
   today: string,
   thresholdPct: number,
+  targets?: TargetLevels,
 ): StockFact {
   const changePct = ((q.price - q.previousClose) / q.previousClose) * 100;
   const flags: Flag[] = [];
@@ -53,6 +65,10 @@ export function buildFact(
   const daysToEarnings = earningsDate ? dayDiff(earningsDate, today) : null;
   if (daysToEarnings !== null && daysToEarnings >= 0 && daysToEarnings <= EARNINGS_WINDOW_DAYS)
     flags.push("earnings_soon");
+  const targetLow = targets?.low && targets.low > 0 ? targets.low : null;
+  const targetHigh = targets?.high && targets.high > 0 ? targets.high : null;
+  if (targetLow !== null && q.price <= targetLow) flags.push("target_low");
+  if (targetHigh !== null && q.price >= targetHigh) flags.push("target_high");
   const pctBelowHigh = q.yearHigh > 0 ? ((q.yearHigh - q.price) / q.yearHigh) * 100 : 100;
   const pctAboveLow = q.yearLow > 0 ? ((q.price - q.yearLow) / q.yearLow) * 100 : 100;
   const partial = { flags, daysToEarnings, pctBelowHigh, pctAboveLow };
@@ -71,6 +87,8 @@ export function buildFact(
     headlines: [],
     flags,
     cautionHint: cautionFor(partial),
+    ...(targetLow !== null ? { targetLow } : {}),
+    ...(targetHigh !== null ? { targetHigh } : {}),
   };
 }
 
@@ -97,6 +115,12 @@ export function factSheet(facts: StockFact[]): string {
         volLine +
         `52-week range $${fmtPrice(f.yearLow)} to $${fmtPrice(f.yearHigh)} (${f.pctBelowHigh.toFixed(1)}% below the high). ` +
         `Flags: ${f.flags.join(", ")}. ` +
+        (f.flags.includes("target_low") && typeof f.targetLow === "number"
+          ? `Price is at or below user's low watch level of $${fmtPrice(f.targetLow)}. `
+          : "") +
+        (f.flags.includes("target_high") && typeof f.targetHigh === "number"
+          ? `Price is at or above user's high watch level of $${fmtPrice(f.targetHigh)}. `
+          : "") +
         (f.earningsDate ? `Earnings on ${f.earningsDate} (in ${f.daysToEarnings} days). ` : "") +
         (f.headlines.length
           ? `Headlines: ${f.headlines.map((h) => `"${h.title}" (${h.publisher}, ${h.date})`).join("; ")}. `

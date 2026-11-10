@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
+import { sql } from "@/lib/db";
 import { compareWithMarket, notableDays, type MoveDriver } from "@/lib/explain";
+import { fmtMarketCap, sectorEtfFor, syncFundamentals } from "@/lib/fundamentals";
 import { loadBars, syncHistory } from "@/lib/history";
-import { readings, snapshot, sma, type Bar } from "@/lib/indicators";
+import { readings, snapshot, type Bar } from "@/lib/indicators";
 import { getHeadlines } from "@/lib/market";
 import { backtest, scoreSnapshot, stability, type Label } from "@/lib/signal";
+import { ActionForm } from "../../ActionForm";
+import { setTargets } from "../../actions";
 import { InteractiveChart } from "../../InteractiveChart";
 
 export const dynamic = "force-dynamic";
@@ -18,35 +22,50 @@ const tone = (n: number | null) => (n === null ? "" : n >= 0 ? "up" : "down");
 const labelTone = (l: Label) => (l === "Strong Buy" || l === "Buy" ? "up" : l === "Neutral" ? "" : "down");
 const driverLabel: Record<MoveDriver, string> = {
   "company-specific": "Company-specific move",
+  "sector-wide": "Sector-wide move",
   "market-wide": "Market-wide move",
   "in-line": "Moved with market",
   quiet: "Quiet session",
 };
 
 function rollingSma(bars: Bar[], n: number): (number | null)[] {
-  const close = bars.map((b) => b.close);
-  return close.map((_, i) => (i + 1 < n ? null : sma(close.slice(0, i + 1), n)));
+  const out: (number | null)[] = new Array(bars.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < bars.length; i++) {
+    sum += bars[i].close;
+    if (i >= n) sum -= bars[i - n].close;
+    if (i + 1 >= n) out[i] = sum / n;
+  }
+  return out;
 }
 
 export default async function Stock({ params, searchParams }: { params: Promise<{ symbol: string }>; searchParams: Promise<{ range?: string }> }) {
-  await requireUser();
+  const user = await requireUser();
   const symbol = decodeURIComponent((await params).symbol).toUpperCase();
   if (!/^[A-Z.\-]{1,10}$/.test(symbol)) notFound();
   const sp = await searchParams;
   const range: Range = sp.range && sp.range in RANGES ? (sp.range as Range) : "1Y";
 
   let error: string | null = null;
-  await Promise.all([
+  const [, , fund, [watchRow]] = await Promise.all([
     syncHistory(symbol).catch((e) => {
       error = e instanceof Error ? e.message : String(e);
     }),
     symbol !== "SPY" ? syncHistory("SPY").catch(() => null) : Promise.resolve(),
+    syncFundamentals(symbol).catch(() => null),
+    sql`SELECT target_low, target_high FROM watchlist WHERE user_id = ${user.id} AND symbol = ${symbol}`,
   ]);
 
-  const [bars, spyBars, headlines] = await Promise.all([
+  const secInfo = sectorEtfFor(fund?.sector);
+  if (secInfo && secInfo.etf !== symbol) {
+    await syncHistory(secInfo.etf).catch(() => null);
+  }
+
+  const [bars, spyBars, sectorBars, headlines] = await Promise.all([
     loadBars(symbol),
     symbol !== "SPY" ? loadBars("SPY").catch(() => [] as Bar[]) : Promise.resolve([] as Bar[]),
-    getHeadlines(symbol, 5),
+    secInfo && secInfo.etf !== symbol ? loadBars(secInfo.etf).catch(() => [] as Bar[]) : Promise.resolve([] as Bar[]),
+    getHeadlines(symbol, 15, 35),
   ]);
 
   if (bars.length < 2) {
@@ -66,15 +85,28 @@ export default async function Stock({ params, searchParams }: { params: Promise<
   const signal = scoreSnapshot(snap);
   const stab = stability(bars, snap);
   const bt = backtest(bars);
-  const cmp = compareWithMarket(snap, spyBars);
-  const bigDays = notableDays(bars, 30, 3);
+  const cmp = compareWithMarket(
+    snap,
+    spyBars,
+    secInfo && sectorBars.length >= 2 ? { etf: secInfo.etf, label: secInfo.label, bars: sectorBars } : null,
+  );
+  const bigDays = notableDays(bars, 30, 3, headlines);
+  const recentHeadlines = headlines.slice(0, 5);
   const periodRet = ((slice[slice.length - 1].close - slice[0].close) / slice[0].close) * 100;
   const hi = Math.max(...slice.map((b) => b.high)), lo = Math.min(...slice.map((b) => b.low));
 
   return (
     <>
-      <h1>{symbol} <span className={`pill ${tone(snap.ret.d1)}`}>{pct(snap.ret.d1)}</span></h1>
-      <p className="mute">${snap.price.toFixed(2)} as of {snap.asOf} · {snap.bars} days of history stored{error ? ` · refresh failed: ${error}` : ""}</p>
+      <h1>
+        {symbol}{" "}
+        {fund?.name && <span className="mute" style={{ fontSize: 18, fontWeight: 500 }}>· {fund.name}</span>}{" "}
+        <span className={`pill ${tone(snap.ret.d1)}`}>{pct(snap.ret.d1)}</span>
+      </h1>
+      <p className="mute">
+        ${snap.price.toFixed(2)} as of {snap.asOf}
+        {fund?.sector ? ` · ${fund.sector}` : ""} · {snap.bars} days of history stored
+        {error ? ` · refresh failed: ${error}` : ""}
+      </p>
 
       <div className="row">
         {(Object.keys(RANGES) as Range[]).map((r) => (
@@ -98,12 +130,21 @@ export default async function Stock({ params, searchParams }: { params: Promise<
         {cmp.volumeNote && <p className="mute">{cmp.volumeNote}</p>}
         {cmp.spy1d !== null && (
           <div className="row" style={{ gap: 16 }}>
-            <span className="mute">1D: <b>{pct(cmp.stock1d)}</b> vs SPY {pct(cmp.spy1d)}</span>
+            <span className="mute">
+              1D: <b>{pct(cmp.stock1d)}</b> vs SPY {pct(cmp.spy1d)}
+              {cmp.sectorEtf && cmp.sector1d !== null ? ` · ${cmp.sectorEtf} ${pct(cmp.sector1d)}` : ""}
+            </span>
             {cmp.stock1w !== null && cmp.spy1w !== null && (
-              <span className="mute">1W: <b>{pct(cmp.stock1w)}</b> vs SPY {pct(cmp.spy1w)}</span>
+              <span className="mute">
+                1W: <b>{pct(cmp.stock1w)}</b> vs SPY {pct(cmp.spy1w)}
+                {cmp.sectorEtf && cmp.sector1w !== null ? ` · ${cmp.sectorEtf} ${pct(cmp.sector1w)}` : ""}
+              </span>
             )}
             {cmp.stock1m !== null && cmp.spy1m !== null && (
-              <span className="mute">1M: <b>{pct(cmp.stock1m)}</b> vs SPY {pct(cmp.spy1m)}</span>
+              <span className="mute">
+                1M: <b>{pct(cmp.stock1m)}</b> vs SPY {pct(cmp.spy1m)}
+                {cmp.sectorEtf && cmp.sector1m !== null ? ` · ${cmp.sectorEtf} ${pct(cmp.sector1m)}` : ""}
+              </span>
             )}
           </div>
         )}
@@ -112,21 +153,39 @@ export default async function Stock({ params, searchParams }: { params: Promise<
           <>
             <h3 style={{ marginBottom: 4 }}>Biggest single-day moves (last 30 trading days)</h3>
             {bigDays.map((d) => (
-              <div key={d.day} className="row" style={{ justifyContent: "space-between", margin: "4px 0" }}>
-                <span><b>{d.day}</b> <span className="mute">· closed ${d.close.toFixed(2)}{d.volumeRatio !== null ? ` · ${d.volumeRatio.toFixed(1)}x avg volume` : ""}</span></span>
-                <span className={`pill ${tone(d.changePct)}`} style={{ fontSize: 13, padding: "2px 10px" }}>{pct(d.changePct)}</span>
+              <div key={d.day} style={{ margin: "6px 0" }}>
+                <div className="row" style={{ justifyContent: "space-between", margin: 0 }}>
+                  <span><b>{d.day}</b> <span className="mute">· closed ${d.close.toFixed(2)}{d.volumeRatio !== null ? ` · ${d.volumeRatio.toFixed(1)}x avg volume` : ""}</span></span>
+                  <span className={`pill ${tone(d.changePct)}`} style={{ fontSize: 13, padding: "2px 10px" }}>{pct(d.changePct)}</span>
+                </div>
+                {d.headline && (
+                  <div className="mute" style={{ fontSize: 13, marginTop: 2 }}>
+                    {d.headline.url ? (
+                      <a href={d.headline.url} target="_blank" rel="noopener noreferrer">{d.headline.title} ↗</a>
+                    ) : (
+                      d.headline.title
+                    )}{" "}
+                    ({d.headline.publisher})
+                  </div>
+                )}
               </div>
             ))}
           </>
         )}
 
         <h3 style={{ marginBottom: 4 }}>Recent headlines</h3>
-        {headlines.length === 0 ? (
+        {recentHeadlines.length === 0 ? (
           <p className="mute" style={{ marginTop: 0 }}>No recent headlines returned by the data provider.</p>
         ) : (
-          headlines.map((h, i) => (
+          recentHeadlines.map((h, i) => (
             <div key={i} style={{ margin: "6px 0" }}>
-              <div>{h.title}</div>
+              <div>
+                {h.url ? (
+                  <a href={h.url} target="_blank" rel="noopener noreferrer">{h.title} ↗</a>
+                ) : (
+                  h.title
+                )}
+              </div>
               <div className="mute">{h.publisher} · {h.date}</div>
             </div>
           ))
@@ -189,6 +248,70 @@ export default async function Stock({ params, searchParams }: { params: Promise<
           <div key={k} className="kpi"><div className="k">{k}</div><div className={`v ${tone(v)}`}>{pct(v)}</div></div>
         ))}
       </div>
+
+      {fund && (fund.marketCap !== null || fund.pe !== null || fund.eps !== null || fund.dividendYield !== null || fund.beta !== null) && (
+        <>
+          <h2>Fundamentals & valuation</h2>
+          <p className="mute">Context from recent financial filings (cached weekly). High or low multiples are descriptive, not buy or sell signals.</p>
+          <div className="kpis">
+            <div className="kpi">
+              <div className="k">Market cap</div>
+              <div className="v">{fmtMarketCap(fund.marketCap)}</div>
+              <div className="s">{fund.sector ?? "US equity"}</div>
+            </div>
+            <div className="kpi">
+              <div className="k">P/E ratio</div>
+              <div className="v">{fund.pe !== null && fund.pe > 0 ? `${fund.pe.toFixed(1)}x` : "n/a"}</div>
+              <div className="s">{fund.eps !== null ? `EPS $${fund.eps.toFixed(2)}` : "price to earnings"}</div>
+            </div>
+            <div className="kpi">
+              <div className="k">Dividend yield</div>
+              <div className="v">{fund.dividendYield !== null && fund.dividendYield > 0 ? `${fund.dividendYield.toFixed(2)}%` : "—"}</div>
+              <div className="s">{fund.dividendYield && fund.dividendYield > 0 ? "annualised" : "no dividend"}</div>
+            </div>
+            <div className="kpi">
+              <div className="k">Beta (vs market)</div>
+              <div className="v">{fund.beta !== null ? fund.beta.toFixed(2) : "n/a"}</div>
+              <div className="s">{fund.beta !== null ? (fund.beta > 1.2 ? "more sensitive than SPY" : fund.beta < 0.8 ? "calmer than SPY" : "moves like SPY") : "market sensitivity"}</div>
+            </div>
+          </div>
+        </>
+      )}
+
+      <h2>Watch levels (optional morning alert)</h2>
+      <ActionForm action={setTargets} className="card">
+        <input type="hidden" name="symbol" value={symbol} />
+        <p className="mute" style={{ marginTop: 0 }}>
+          Set a low or high price level to include {symbol} in your morning brief whenever it closes at or beyond that price (also adds {symbol} to your watchlist). Leave blank to clear.
+        </p>
+        <div className="row">
+          <label className="mute">
+            Low watch ($){" "}
+            <input
+              name="targetLow"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="e.g. 150"
+              defaultValue={watchRow?.target_low ?? ""}
+              style={{ width: 120, marginLeft: 6 }}
+            />
+          </label>
+          <label className="mute">
+            High watch ($){" "}
+            <input
+              name="targetHigh"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="e.g. 220"
+              defaultValue={watchRow?.target_high ?? ""}
+              style={{ width: 120, marginLeft: 6 }}
+            />
+          </label>
+          <button className="ghost">Save levels</button>
+        </div>
+      </ActionForm>
 
       <h2>What the indicators say</h2>
       <p className="mute">Descriptions of the past price pattern. They do not predict what happens next.</p>

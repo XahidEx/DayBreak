@@ -6,7 +6,7 @@ import * as fmp from "./fmp";
 import * as fh from "./finnhub";
 import * as stooq from "./stooq";
 
-export type { Headline, Quote } from "./fmp";
+export type { Fundamentals, Headline, Quote } from "./fmp";
 
 export async function getQuote(symbol: string): Promise<fmp.Quote> {
   try {
@@ -33,10 +33,10 @@ export async function getEarningsDates(from: string, to: string): Promise<Map<st
 }
 
 /** Optional: never throws. Finnhub first (FMP news needs a paid plan), then FMP. */
-export async function getHeadlines(symbol: string, limit = 3): Promise<fmp.Headline[]> {
+export async function getHeadlines(symbol: string, limit = 3, daysBack = 3): Promise<fmp.Headline[]> {
   if (fh.finnhubEnabled()) {
     try {
-      const h = await fh.getHeadlines(symbol, limit);
+      const h = await fh.getHeadlines(symbol, limit, daysBack);
       if (h.length) return h;
     } catch {}
   }
@@ -58,4 +58,29 @@ export async function getHistory(symbol: string, from: string): Promise<import("
       throw new Error(`${a}; Stooq: ${b}`);
     }
   }
+}
+
+/** Company profile and valuation metrics. Merges FMP and Finnhub when available. */
+export async function getFundamentals(symbol: string): Promise<fmp.Fundamentals | null> {
+  let a: fmp.Fundamentals | null = null;
+  try {
+    a = await fmp.getFundamentals(symbol);
+  } catch {}
+  if (fh.finnhubEnabled()) {
+    try {
+      const b = await fh.getFundamentals(symbol);
+      if (!a) return b;
+      return {
+        symbol: a.symbol,
+        name: a.name ?? b.name,
+        sector: a.sector ?? b.sector,
+        marketCap: a.marketCap ?? b.marketCap,
+        pe: a.pe ?? b.pe,
+        eps: a.eps ?? b.eps,
+        dividendYield: a.dividendYield ?? b.dividendYield,
+        beta: a.beta ?? b.beta,
+      };
+    } catch {}
+  }
+  return a;
 }

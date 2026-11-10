@@ -7,12 +7,17 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS watchlist (
-  id       SERIAL PRIMARY KEY,
-  user_id  INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  symbol   TEXT NOT NULL,
-  added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  id          SERIAL PRIMARY KEY,
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  symbol      TEXT NOT NULL,
+  target_low  DOUBLE PRECISION,
+  target_high DOUBLE PRECISION,
+  added_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (user_id, symbol)
 );
+
+ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS target_low DOUBLE PRECISION;
+ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS target_high DOUBLE PRECISION;
 
 CREATE TABLE IF NOT EXISTS briefs (
   id         SERIAL PRIMARY KEY,
@@ -33,7 +38,7 @@ CREATE TABLE IF NOT EXISTS brief_alerts (
   brief_id   INT NOT NULL REFERENCES briefs(id) ON DELETE CASCADE,
   user_id    INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   symbol     TEXT NOT NULL,
-  kind       TEXT NOT NULL,           -- 'jump' | 'drop' | 'earnings_soon'
+  kind       TEXT NOT NULL,           -- 'jump' | 'drop' | 'earnings_soon' | 'target_low' | 'target_high'
   change_pct DOUBLE PRECISION NOT NULL,
   price      DOUBLE PRECISION NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -76,3 +81,18 @@ CREATE TABLE IF NOT EXISTS price_sync (
   synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   source    TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS fundamentals (
+  symbol      TEXT PRIMARY KEY,
+  name        TEXT,
+  sector      TEXT,
+  market_cap  DOUBLE PRECISION,
+  pe          DOUBLE PRECISION,
+  eps         DOUBLE PRECISION,
+  div_yield   DOUBLE PRECISION,
+  beta        DOUBLE PRECISION,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_brief_alerts_user ON brief_alerts(user_id);
+CREATE INDEX IF NOT EXISTS idx_paper_ideas_user ON paper_ideas(user_id);

@@ -20,9 +20,13 @@ export async function runDaily() {
   await ping("/start");
   const problems: string[] = [];
   try {
-    // keep stored price history current for every watched symbol (a failure here must not block the brief)
-    for (const r of await sql`SELECT DISTINCT symbol FROM watchlist`) {
-      try { await syncHistory(r.symbol, 6); } catch (e) { console.error(`history sync failed for ${r.symbol}`, e); }
+    // keep stored price history current for every watched symbol + SPY (a failure here must not block the brief)
+    const symbols = [
+      "SPY",
+      ...(await sql`SELECT DISTINCT symbol FROM watchlist`).map((r) => r.symbol as string),
+    ];
+    for (const sym of new Set(symbols)) {
+      try { await syncHistory(sym, 6); } catch (e) { console.error(`history sync failed for ${sym}`, e); }
     }
     const users = await sql`SELECT id, email, timezone FROM users`;
     for (const u of users) {
