@@ -10,7 +10,7 @@ export function BriefView({ body, alertIds, facts, series }: { body: BriefBody; 
     <>
       {quiet && (
         <div className="card quiet-card">
-          <div className="big">🌤</div>
+          <div className="big">{"\u{1F324}"}</div>
           <p>{body.greeting}</p>
           {body.quietSymbols.length > 0 && <p className="mute">Checked: {body.quietSymbols.join(", ")}</p>}
         </div>
@@ -19,7 +19,7 @@ export function BriefView({ body, alertIds, facts, series }: { body: BriefBody; 
         <div key={s.symbol} className="card stock">
           <div className="stock-head">
             <div className="avatar">{s.symbol.slice(0, 4)}</div>
-            <div className="grow"><div className="sym">{s.symbol}</div></div>
+            <div className="grow"><Link href={`/stock/${s.symbol}`} className="sym">{s.symbol}</Link></div>
             <span className={`pill ${s.changePct >= 0 ? "up" : "down"}`}>{fmtPct(s.changePct)}</span>
           </div>
           {facts?.find((f) => f.symbol === s.symbol) && (
@@ -32,7 +32,10 @@ export function BriefView({ body, alertIds, facts, series }: { body: BriefBody; 
             <div><div className="label">What happened</div><p>{s.whatHappened}</p></div>
             <div><div className="label">Why it may matter</div><p>{s.whyItMayMatter}</p></div>
             <div className="caution"><div className="label">Be careful</div><p>{s.caution}</p></div>
-            <Link className="cta" href={`/paper?symbol=${s.symbol}${alertIds?.[s.symbol] ? `&alert=${alertIds[s.symbol]}` : ""}`}>Note a paper idea →</Link>
+            <div className="row" style={{ gap: 14 }}>
+              <Link className="cta" href={`/stock/${s.symbol}`}>Why & full analysis →</Link>
+              <Link className="cta" href={`/paper?symbol=${s.symbol}${alertIds?.[s.symbol] ? `&alert=${alertIds[s.symbol]}` : ""}`}>Note a paper idea →</Link>
+            </div>
           </div>
         </div>
       ))}

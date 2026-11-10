@@ -1,6 +1,8 @@
 import { sql } from "./db";
 import { getEarningsDates, getHeadlines, getQuote, type Quote } from "./market";
 import { buildFact, type StockFact } from "./facts";
+import { loadBars } from "./history";
+import { volumeRatio } from "./indicators";
 import { summarize } from "./summarize";
 
 export type BriefBody = {
@@ -26,7 +28,14 @@ export async function generateBrief(userId: number): Promise<{ id: number; headl
 
   let facts: StockFact[] = [];
   if (symbols.length > 0) {
-    const results = await Promise.allSettled(symbols.map((s) => getQuote(s)));
+    const [results, spyQuote] = await Promise.all([
+      Promise.allSettled(symbols.map((s) => getQuote(s))),
+      getQuote("SPY").catch(() => null),
+    ]);
+    const spyChangePct =
+      spyQuote && spyQuote.previousClose > 0
+        ? ((spyQuote.price - spyQuote.previousClose) / spyQuote.previousClose) * 100
+        : null;
     const quotes: Quote[] = [];
     results.forEach((r, i) => (r.status === "fulfilled" ? quotes.push(r.value) : notes.push(`Could not get data for ${symbols[i]}.`)));
     if (quotes.length === 0) throw new Error("No market data could be fetched for any watchlist symbol");
@@ -35,16 +44,24 @@ export async function generateBrief(userId: number): Promise<{ id: number; headl
     try {
       const end = new Date(Date.parse(today) + 14 * 86_400_000).toISOString().slice(0, 10);
       earnings = await getEarningsDates(today, end);
-    } catch (e) {
+    } catch {
       notes.push("Earnings dates were unavailable this morning.");
     }
-    facts = quotes.map((q) => buildFact(q, earnings.get(q.symbol) ?? null, today, threshold));
+    facts = await Promise.all(
+      quotes.map(async (q) => {
+        const f = buildFact(q, earnings.get(q.symbol) ?? null, today, threshold);
+        f.spyChangePct = spyChangePct;
+        const bars = await loadBars(q.symbol).catch(() => []);
+        f.volumeRatio = volumeRatio(bars.map((b) => b.volume));
+        return f;
+      }),
+    );
     const stale = facts.filter((f) => (Date.parse(today) - Date.parse(f.asOf)) / 86_400_000 > 4);
     if (stale.length) notes.push(`Prices for ${stale.map((f) => f.symbol).join(", ")} look out of date.`);
   }
 
   const flagged = facts.filter((f) => f.flags.length > 0);
-  await Promise.all(flagged.map(async (f) => (f.headlines = await getHeadlines(f.symbol))));
+  await Promise.all(flagged.map(async (f) => (f.headlines = await getHeadlines(f.symbol, 4))));
 
   let mode: "quiet" | "ai" | "template" = "quiet";
   let body: BriefBody;

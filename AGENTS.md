@@ -7,7 +7,7 @@ DayBreak helps the owner invest more smartly in US stocks. It is a personal tool
 - Show stock price history and technical indicators.
 - Give hint-level signals (Strong Buy / Buy / Neutral / Sell / Strong Sell) with every factor visible and a backtest. They are hints, not certainty.
 
-Roadmap order: history and indicators (done), "why is it down" explainer, signal score and backtest.
+Roadmap order: history and indicators (done), "why is it down" explainer (done), signal score and backtest (done).
 
 ## Hosting
 - Self-hosted on an **Ubuntu server via Coolify** (not Vercel), deployed from the `main` branch with `docker-compose.yml`.

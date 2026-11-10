@@ -17,6 +17,8 @@ export type StockFact = {
   headlines: Headline[];
   flags: Flag[];
   cautionHint: string;
+  spyChangePct?: number | null;
+  volumeRatio?: number | null;
 };
 
 export const EARNINGS_WINDOW_DAYS = 7;
@@ -81,8 +83,18 @@ export function factSheet(facts: StockFact[]): string {
     "Definitions: a big move is a daily change of the alert threshold or more. Earnings count as soon when within 7 days. The 52-week range is the lowest and highest price in the past year.",
   ];
   for (const f of facts) {
+    const spyLine =
+      typeof f.spyChangePct === "number"
+        ? `US market (SPY) change ${fmtPct(f.spyChangePct)} (${fmtPct(f.changePct - f.spyChangePct)} vs market). `
+        : "";
+    const volLine =
+      typeof f.volumeRatio === "number"
+        ? `Volume ${f.volumeRatio.toFixed(1)}x 20-day average. `
+        : "";
     lines.push(
       `${f.symbol}: price $${fmtPrice(f.price)}, previous close $${fmtPrice(f.previousClose)}, change ${fmtPct(f.changePct)}, data as of ${f.asOf}. ` +
+        spyLine +
+        volLine +
         `52-week range $${fmtPrice(f.yearLow)} to $${fmtPrice(f.yearHigh)} (${f.pctBelowHigh.toFixed(1)}% below the high). ` +
         `Flags: ${f.flags.join(", ")}. ` +
         (f.earningsDate ? `Earnings on ${f.earningsDate} (in ${f.daysToEarnings} days). ` : "") +

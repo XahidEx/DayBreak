@@ -6,6 +6,7 @@ Rules:
 - Use simple everyday words. No jargon. Short sentences.
 - Use ONLY the facts and figures in the fact sheet, copied exactly as written. Never calculate, round, or invent any number, date, or reason.
 - Never tell the reader to buy, sell, or hold. Never predict where a price will go. Never say what they should do.
+- In "whatHappened", state the price and change, and if US market (SPY) change or volume vs average is in the sheet, mention whether the stock moved with the market or on its own and whether volume was heavy.
 - Headlines are claims by publishers: say "a headline from <publisher> said ..." and never state the cause as certain. If there is no headline, say the data does not show why.
 - For every stock give exactly one honest reason for caution, based on the "Caution to convey" line, in your own gentle words.
 - Include every stock in the sheet, once each, using its exact ticker symbol.
@@ -48,6 +49,7 @@ async function callGemini(prompt: string): Promise<unknown> {
   }
   throw new Error(`Gemini unavailable (${lastError})`);
 }
+
 /** Plain, deterministic fallback: used if the AI fails or breaks the rules. */
 export function templateBrief(facts: StockFact[]): BriefOutput {
   return {
@@ -57,6 +59,10 @@ export function templateBrief(facts: StockFact[]): BriefOutput {
       if (f.flags.includes("jump") || f.flags.includes("drop"))
         parts.push(`${f.symbol} ${f.changePct >= 0 ? "rose" : "fell"} ${fmtPct(f.changePct)} to $${fmtPrice(f.price)} (previous close $${fmtPrice(f.previousClose)}).`);
       else parts.push(`${f.symbol} is at $${fmtPrice(f.price)}, ${fmtPct(f.changePct)} on the day.`);
+      if (typeof f.spyChangePct === "number")
+        parts.push(`The US market (SPY) moved ${fmtPct(f.spyChangePct)} (${fmtPct(f.changePct - f.spyChangePct)} vs market).`);
+      if (typeof f.volumeRatio === "number")
+        parts.push(`Volume was ${f.volumeRatio.toFixed(1)}x its 20-day average.`);
       if (f.earningsDate) parts.push(`It reports earnings on ${f.earningsDate}.`);
       const h = f.headlines[0];
       return {

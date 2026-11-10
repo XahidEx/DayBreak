@@ -5,11 +5,16 @@ import { ActionForm } from "./ActionForm";
 import { BriefView, greetingFor } from "./BriefView";
 import { CountUp } from "./CountUp";
 import { RangeBar, Sparkline } from "./charts";
+import { loadBars } from "@/lib/history";
+import { snapshot } from "@/lib/indicators";
+import { scoreSnapshot, stability, type Label } from "@/lib/signal";
 import type { StockFact } from "@/lib/facts";
 import { fmtPct } from "@/lib/facts";
 import { addSymbol, generateNow, removeSymbol } from "./actions";
 
 export const dynamic = "force-dynamic";
+
+const labelTone = (l: Label) => (l === "Strong Buy" || l === "Buy" ? "up" : l === "Neutral" ? "" : "down");
 
 export default async function Today() {
   const user = await requireUser();
@@ -27,6 +32,17 @@ export default async function Today() {
   const [{ open }] = await sql`SELECT count(*)::int AS open FROM paper_ideas WHERE user_id = ${user.id} AND closed_at IS NULL`;
   const mover = [...facts].sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct))[0];
   const avg = facts.length ? facts.reduce((s, f) => s + f.changePct, 0) / facts.length : null;
+  const hints = new Map<string, { label: Label; stab: string | null; stabTone: string }>();
+  await Promise.all(
+    facts.map(async (f) => {
+      const bars = await loadBars(f.symbol);
+      const snap = snapshot(bars);
+      if (!snap) return;
+      const sig = scoreSnapshot(snap);
+      const st = stability(bars, snap);
+      hints.set(f.symbol, { label: sig.label, stab: st?.label ?? null, stabTone: st ? (st.tone === "flat" ? "" : st.tone) : "" });
+    }),
+  );
 
   return (
     <>
@@ -61,14 +77,23 @@ export default async function Today() {
         <>
           <h2>Your watchlist at a glance</h2>
           <div className="tiles">
-            {facts.map((f) => (
-              <div key={f.symbol} className="card tile">
-                <div className="tile__top"><Link href={`/stock/${f.symbol}`} className="sym">{f.symbol}</Link><span className={`pill ${f.changePct >= 0 ? "up" : "down"}`}>{fmtPct(f.changePct)}</span></div>
-                <div className="tile__px">${f.price.toFixed(2)}</div>
-                <Sparkline values={series.get(f.symbol) ?? []} />
-                <RangeBar price={f.price} low={f.yearLow} high={f.yearHigh} />
-              </div>
-            ))}
+            {facts.map((f) => {
+              const h = hints.get(f.symbol);
+              return (
+                <div key={f.symbol} className="card tile">
+                  <div className="tile__top"><Link href={`/stock/${f.symbol}`} className="sym">{f.symbol}</Link><span className={`pill ${f.changePct >= 0 ? "up" : "down"}`}>{fmtPct(f.changePct)}</span></div>
+                  <div className="tile__px">${f.price.toFixed(2)}</div>
+                  {h && (
+                    <div className="row" style={{ marginTop: 6, gap: 6 }}>
+                      <span className={`pill ${labelTone(h.label)}`} style={{ fontSize: 12, padding: "2px 9px" }}>{h.label}</span>
+                      {h.stab && <span className={`pill ${h.stabTone}`} style={{ fontSize: 12, padding: "2px 9px" }}>{h.stab}</span>}
+                    </div>
+                  )}
+                  <Sparkline values={series.get(f.symbol) ?? []} />
+                  <RangeBar price={f.price} low={f.yearLow} high={f.yearHigh} />
+                </div>
+              );
+            })}
           </div>
         </>
       )}
@@ -78,7 +103,7 @@ export default async function Today() {
         {list.map((r) => (
           <form key={r.symbol} action={removeSymbol} className="chip">
             <input type="hidden" name="symbol" value={r.symbol} />
-            {r.symbol}
+            <Link href={`/stock/${r.symbol}`} style={{ color: "inherit", textDecoration: "none" }}>{r.symbol}</Link>
             <button aria-label={`Remove ${r.symbol}`}>{"\u00d7"}</button>
           </form>
         ))}

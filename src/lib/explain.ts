@@ -1,0 +1,106 @@
+/**
+ * "Why did it move?" explainer — compares a stock's move against the US market (SPY),
+ * checks trading volume, finds the biggest recent single-day moves, and pairs them with news headlines.
+ * All numbers come from code; never invented by AI.
+ */
+import type { Bar, Snapshot } from "./indicators";
+import { returnOver } from "./indicators";
+import type { Headline } from "./market";
+
+export type MoveDriver = "company-specific" | "market-wide" | "in-line" | "quiet";
+
+export type MoveComparison = {
+  stock1d: number;
+  spy1d: number | null;
+  excess1d: number | null;
+  stock1w: number | null;
+  spy1w: number | null;
+  stock1m: number | null;
+  spy1m: number | null;
+  driver: MoveDriver;
+  summary: string;
+  volumeNote: string | null;
+};
+
+export type NotableDay = {
+  day: string;
+  changePct: number;
+  close: number;
+  volumeRatio: number | null;
+};
+
+const fmtSigned = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
+
+/** Compare a stock's 1d/1w/1m move with SPY and explain whether the move is market-wide or company-specific. */
+export function compareWithMarket(snap: Snapshot, spyBars: Bar[]): MoveComparison {
+  const stock1d = snap.ret.d1 ?? 0;
+  const stock1w = snap.ret.w1;
+  const stock1m = snap.ret.m1;
+  const spyClose = spyBars.map((b) => b.close);
+  const spy1d = returnOver(spyClose, 1);
+  const spy1w = returnOver(spyClose, 5);
+  const spy1m = returnOver(spyClose, 21);
+  const excess1d = spy1d !== null ? stock1d - spy1d : null;
+
+  let driver: MoveDriver = "quiet";
+  let summary: string;
+
+  if (Math.abs(stock1d) < 1.2) {
+    driver = "quiet";
+    summary =
+      spy1d !== null
+        ? `Moved ${fmtSigned(stock1d)} on the latest day while the US market (SPY) moved ${fmtSigned(spy1d)} — a normal, quiet session.`
+        : `Moved ${fmtSigned(stock1d)} on the latest day — a normal, quiet session.`;
+  } else if (spy1d === null || excess1d === null) {
+    driver = "company-specific";
+    summary = `Moved ${fmtSigned(stock1d)} on the latest day.`;
+  } else if (Math.sign(stock1d) === Math.sign(spy1d) && Math.abs(spy1d) >= 1.0 && Math.abs(excess1d) < 1.5) {
+    driver = "market-wide";
+    summary = `Moved ${fmtSigned(stock1d)} on the latest day while the US market (SPY) moved ${fmtSigned(spy1d)}. Most of this move came from the broader market rather than company-specific news.`;
+  } else if (Math.abs(excess1d) >= 2.0) {
+    driver = "company-specific";
+    const dir = stock1d < 0 ? "fell" : "rose";
+    summary = `${dir === "fell" ? "Fell" : "Rose"} ${fmtSigned(stock1d)} on the latest day while the US market (SPY) moved ${fmtSigned(spy1d)} (${fmtSigned(excess1d)} vs. market). That gap points to something specific to this stock or its sector.`;
+  } else {
+    driver = "in-line";
+    summary = `Moved ${fmtSigned(stock1d)} on the latest day compared with ${fmtSigned(spy1d)} for the US market (SPY).`;
+  }
+
+  let volumeNote: string | null = null;
+  if (snap.volumeRatio !== null) {
+    if (snap.volumeRatio >= 1.8)
+      volumeNote = `Trading volume was ${snap.volumeRatio.toFixed(1)}x its 20-day average — heavy activity backed the move.`;
+    else if (snap.volumeRatio <= 0.6)
+      volumeNote = `Trading volume was ${snap.volumeRatio.toFixed(1)}x its 20-day average — lighter than usual.`;
+    else
+      volumeNote = `Trading volume was ${snap.volumeRatio.toFixed(1)}x its 20-day average (normal).`;
+  }
+
+  return { stock1d, spy1d, excess1d, stock1w, spy1w, stock1m, spy1m, driver, summary, volumeNote };
+}
+
+/** Find the largest single-day moves (by absolute %) in the last `lookback` bars. */
+export function notableDays(bars: Bar[], lookback = 30, limit = 3): NotableDay[] {
+  if (bars.length < 2) return [];
+  const start = Math.max(1, bars.length - lookback);
+  const out: NotableDay[] = [];
+  for (let i = start; i < bars.length; i++) {
+    const prev = bars[i - 1].close;
+    if (prev <= 0) continue;
+    const changePct = ((bars[i].close - prev) / prev) * 100;
+    const volSlice = bars.slice(Math.max(0, i - 20), i);
+    const avgVol = volSlice.length ? volSlice.reduce((s, b) => s + b.volume, 0) / volSlice.length : 0;
+    const volumeRatio = avgVol > 0 ? bars[i].volume / avgVol : null;
+    out.push({ day: bars[i].day, changePct, close: bars[i].close, volumeRatio });
+  }
+  return out
+    .filter((d) => Math.abs(d.changePct) >= 2.0)
+    .sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct))
+    .slice(0, limit);
+}
+
+export type MoveExplanation = {
+  comparison: MoveComparison;
+  bigDays: NotableDay[];
+  headlines: Headline[];
+};
