@@ -2,24 +2,36 @@ import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { ActionForm } from "./ActionForm";
 import { BriefView, greetingFor } from "./BriefView";
+import { CountUp } from "./CountUp";
+import { RangeBar, Sparkline } from "./charts";
+import type { StockFact } from "@/lib/facts";
+import { fmtPct } from "@/lib/facts";
 import { addSymbol, generateNow, removeSymbol } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function Today() {
   const user = await requireUser();
-  const [brief] = await sql`SELECT id, to_char(brief_date,'FMDay, FMDD FMMonth') AS d, status, headline, body FROM briefs WHERE user_id = ${user.id} ORDER BY brief_date DESC LIMIT 1`;
+  const [brief] = await sql`SELECT id, to_char(brief_date,'FMDay, FMDD FMMonth') AS d, status, headline, body, facts FROM briefs WHERE user_id = ${user.id} ORDER BY brief_date DESC LIMIT 1`;
   const alerts = brief ? await sql`SELECT id, symbol FROM brief_alerts WHERE brief_id = ${brief.id} ORDER BY id DESC` : [];
   const alertIds = Object.fromEntries(alerts.map((a) => [a.symbol, a.id as number]));
   const list = await sql`SELECT symbol FROM watchlist WHERE user_id = ${user.id} ORDER BY symbol`;
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: user.timezone }).format(new Date()));
   const n = brief?.body?.stocks?.length ?? 0;
+  const facts: StockFact[] = brief?.facts ?? [];
+  // price history per symbol from the daily snapshots already stored with each brief (oldest first)
+  const past = await sql`SELECT facts FROM (SELECT facts, brief_date FROM briefs WHERE user_id = ${user.id} ORDER BY brief_date DESC LIMIT 30) t ORDER BY brief_date`;
+  const series = new Map<string, number[]>();
+  for (const r of past) for (const f of r.facts as StockFact[]) series.set(f.symbol, [...(series.get(f.symbol) ?? []), f.price]);
+  const [{ open }] = await sql`SELECT count(*)::int AS open FROM paper_ideas WHERE user_id = ${user.id} AND closed_at IS NULL`;
+  const mover = [...facts].sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct))[0];
+  const avg = facts.length ? facts.reduce((s, f) => s + f.changePct, 0) / facts.length : null;
 
   return (
     <>
       <section className="hero">
         <div className="date">{brief ? brief.d : "Welcome"}</div>
-        <h1>{greetingFor(hour)} ☀</h1>
+        <h1>{greetingFor(hour)} {"\u2600"}</h1>
         <p>
           {!brief
             ? "No brief yet. Add a few stocks below and your first note will arrive tomorrow morning."
@@ -35,7 +47,30 @@ export default async function Today() {
         )}
       </section>
 
-      {brief && <BriefView body={brief.body} alertIds={alertIds} />}
+      <div className="kpis">
+        <div className="kpi"><div className="k">Watching</div><div className="v"><CountUp value={list.length} /></div><div className="s">symbols on your list</div></div>
+        <div className="kpi"><div className="k">Alerts today</div><div className="v"><CountUp value={n} /></div><div className="s">{brief ? (n === 0 ? "all quiet" : "worth a look") : "no brief yet"}</div></div>
+        <div className="kpi"><div className="k">Average move</div><div className={`v ${avg === null ? "" : avg >= 0 ? "up" : "down"}`}>{avg === null ? "n/a" : <CountUp value={avg} decimals={1} prefix="+" suffix="%" />}</div><div className="s">{mover ? `biggest: ${mover.symbol} ${fmtPct(mover.changePct)}` : "after your first brief"}</div></div>
+        <div className="kpi"><div className="k">Open paper ideas</div><div className="v"><CountUp value={open} /></div><div className="s">tracked, not traded</div></div>
+      </div>
+
+      {brief && <BriefView body={brief.body} alertIds={alertIds} facts={facts} series={Object.fromEntries(series)} />}
+
+      {facts.length > 0 && (
+        <>
+          <h2>Your watchlist at a glance</h2>
+          <div className="tiles">
+            {facts.map((f) => (
+              <div key={f.symbol} className="card tile">
+                <div className="tile__top"><span className="sym">{f.symbol}</span><span className={`pill ${f.changePct >= 0 ? "up" : "down"}`}>{fmtPct(f.changePct)}</span></div>
+                <div className="tile__px">${f.price.toFixed(2)}</div>
+                <Sparkline values={series.get(f.symbol) ?? []} />
+                <RangeBar price={f.price} low={f.yearLow} high={f.yearHigh} />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       <h2>Your watchlist</h2>
       <div className="chips">
@@ -43,7 +78,7 @@ export default async function Today() {
           <form key={r.symbol} action={removeSymbol} className="chip">
             <input type="hidden" name="symbol" value={r.symbol} />
             {r.symbol}
-            <button aria-label={`Remove ${r.symbol}`}>×</button>
+            <button aria-label={`Remove ${r.symbol}`}>{"\u00d7"}</button>
           </form>
         ))}
         {list.length === 0 && <span className="mute">Nothing here yet. Add your first stock below.</span>}
