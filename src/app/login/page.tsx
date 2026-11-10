@@ -9,15 +9,26 @@ export default async function Login() {
   return (
     <div className="login-wrap">
       <div className="card login">
-        <Sun />
+        <div className="login__badge">
+          <Sun />
+        </div>
         <h1>DayBreak</h1>
-        <p className="mute" style={{ marginBottom: 20 }}>Your calm morning note on the market.</p>
-        <ActionForm action={login}>
-          <div>
-            <input name="email" type="email" placeholder="Email" autoComplete="username" required />
-            <input name="password" type="password" placeholder="Password" autoComplete="current-password" required />
-            <button>Log in</button>
+        <p className="login__sub">Your calm morning note on the US stock market.</p>
+        <div className="login__pills">
+          <span>Morning brief</span>
+          <span>Why it moved</span>
+          <span>Signal &amp; backtest</span>
+        </div>
+        <ActionForm action={login} className="login__form">
+          <div className="field">
+            <label htmlFor="login-email">Email</label>
+            <input id="login-email" name="email" type="email" placeholder="you@example.com" autoComplete="username" required />
           </div>
+          <div className="field">
+            <label htmlFor="login-password">Password</label>
+            <input id="login-password" name="password" type="password" placeholder="••••••••••••" autoComplete="current-password" required />
+          </div>
+          <button className="login__btn">Sign in to DayBreak →</button>
         </ActionForm>
       </div>
     </div>
