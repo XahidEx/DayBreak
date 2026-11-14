@@ -40,6 +40,63 @@ DayBreak watches your US stock list overnight and sends a short morning note onl
 2. **Code-Built Fact Sheet (`src/lib/facts.ts`)**: All percentages, 52-week range positions, volume ratios, and caution notes are calculated in TypeScript and serialized into a strict fact sheet.
 3. **Zero-Trust Validation (`src/lib/guard.ts`)**: The LLM output is parsed with Zod and checked token-by-token. Any invented number, missing symbol, or advisory/predictive phrase (`"should"`, `"buy"`, `"will rise"`, `"undervalued"`, etc.) is rejected.
 
+### Sample Fact Sheet → Morning Note
+
+Below is an actual fact sheet built by `factSheet()` (`src/lib/facts.ts`) for three alert types (`jump`, `drop` + `earnings_soon`, and `target_low`), followed by the morning note verified by `validateBrief()` (`src/lib/guard.ts`):
+
+```text
+Definitions: a big move is a daily change of the alert threshold or more. Earnings count as soon when within 7 days. The 52-week range is the lowest and highest price in the past year.
+NVDA: price $142.30, previous close $136.04, change +4.6%, data as of 2026-11-13. US market (SPY) change +0.4% (+4.2% vs market). Volume 2.1x 20-day average. 52-week range $75.60 to $149.76 (5.0% below the high). Flags: jump. Headlines: "Nvidia unveils next-generation server rack shipments for Q4" (Reuters, 2026-11-13). Caution to convey: One big up day is not a trend, and sharp rises sometimes give back part of the gain.
+TSLA: price $241.10, previous close $249.59, change -3.4%, data as of 2026-11-13. US market (SPY) change +0.4% (-3.8% vs market). Volume 1.6x 20-day average. 52-week range $138.80 to $271.00 (11.0% below the high). Flags: drop, earnings_soon. Earnings on 2026-11-17 (in 3 days). No headlines available. Caution to convey: Earnings are due in 3 days, and results often move a share price sharply in either direction.
+KO: price $61.80, previous close $62.15, change -0.6%, data as of 2026-11-13. US market (SPY) change +0.4% (-1.0% vs market). Volume 0.9x 20-day average. 52-week range $57.93 to $73.53 (16.0% below the high). Flags: target_low. Price is at or below user's low watch level of $62.00. No headlines available. Caution to convey: Crossing below a target price does not mean a stock has stopped falling; check what changed before acting.
+```
+
+What you read at 7:00 AM (web & email):
+
+> **Good morning. Three stocks on your watchlist triggered alerts overnight, while AAPL and MSFT had a quiet session.**
+>
+> - **NVDA (`+4.6%`)**
+>   - **What happened:** NVDA rose `+4.6%` to `$142.30` from a previous close of `$136.04`, outpacing the US market (`SPY +0.4%`, `+4.2%` vs market) on heavy volume at `2.1x` its 20-day average.
+>   - **Why it may matter:** A headline from Reuters said *"Nvidia unveils next-generation server rack shipments for Q4"*, though the data does not confirm this caused the move.
+>   - **Be careful:** One big up day is not a trend, and sharp single-day gains sometimes give back part of the move.
+> - **TSLA (`-3.4%`)**
+>   - **What happened:** TSLA fell `-3.4%` to `$241.10` from `$249.59` while SPY rose `+0.4%` (`-3.8%` vs market) on `1.6x` average volume, with earnings scheduled for `2026-11-17` (in 3 days).
+>   - **Why it may matter:** No headlines were returned for the session, so the data does not show what drove the drop.
+>   - **Be careful:** Earnings are due in 3 days, and quarterly results often move the stock sharply in either direction.
+> - **KO (`-0.6%`)**
+>   - **What happened:** KO edged down `-0.6%` to `$61.80` from `$62.15` on `0.9x` average volume, crossing below your `$62.00` low watch level.
+>   - **Why it may matter:** No company headlines accompanied the move; the data does not show a specific catalyst.
+>   - **Be careful:** Crossing below a watch level does not mean a stock has stopped falling, so check what changed before acting.
+
+---
+
+### Sample Signal Breakdown & Per-Stock Backtest (`src/lib/signal.ts`)
+
+Every stock page computes a transparent `-100` to `+100` hint score and immediately replays that exact rule across the stock's own 5-year history (`1,265` daily bars, `209` overlapping 20-trading-day windows) beside a random-day baseline—so you can see when a technical rule actually helped and when a dip-buying bull trend made `"Sell"` signals bounce back:
+
+**Factor weights (`MSFT` snapshot — Score `+32 / ±100` → `Buy`):**
+
+| Factor | Points | Why |
+| :--- | :---: | :--- |
+| Long-term trend | `+20 / 20` | 50-day average is above the 200-day average. |
+| Price vs 200-day average | `+10 / 10` | Price is above its 200-day average. |
+| Price vs 50-day average | `+10 / 10` | Price is above its 50-day average. |
+| MACD momentum | `-15 / 15` | MACD is below its signal line. |
+| 3-month momentum | `+7 / 15` | Price is up 9.1% over 3 months. |
+| RSI extremes | `0 / 10` | RSI is in the normal range. |
+| Bollinger bands | `0 / 5` | Inside the 20-day bands. |
+
+**20-trading-day forward backtest vs. random-day baseline (`NVDA`, 209 samples over 5 years):**
+
+| Signal Label | Occurrences | Avg 20-Day Forward Return | Win Rate (Up After 20d) |
+| :--- | :---: | :---: | :---: |
+| **Strong Buy** (`score ≥ +50`) | 80 times | `+7.0%` | `69%` |
+| **Buy** (`+20` to `+49`) | 65 times | `+3.4%` | `65%` |
+| **Neutral** (`-19` to `+19`) | 39 times | `+5.2%` | `72%` |
+| **Sell** (`-49` to `-20`) | 18 times | `+12.9%` | `72%` |
+| **Strong Sell** (`score ≤ -50`) | 7 times | `+1.2%` | `43%` |
+| *Random-day baseline (any day)* | *209 samples* | *`+5.9%`* | *`67%`* |
+
 ---
 
 ## Quick Preview (Zero Config, No Docker or API Keys Needed)
